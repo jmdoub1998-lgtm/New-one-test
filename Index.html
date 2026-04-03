@@ -1,0 +1,1246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Elevator Monitor</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --red: #e53e3e;
+      --green: #00e676;
+      --amber: #ffab00;
+      --blue: #3182ce;
+      --purple: #9f7aea;
+      --bg: #0a0a0a;
+      --bg2: #111111;
+      --bg3: #1a1a1a;
+      --border: #2a2a2a;
+      --text: #f0f0f0;
+      --muted: #888888;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    /* ===== MODAL OVERLAY ===== */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: var(--bg2);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 28px 24px;
+      z-index: 900;
+    }
+    .modal-overlay.hidden { display: none; }
+
+    .modal-icon {
+      font-size: 3rem;
+      margin-bottom: 12px;
+    }
+    .modal-title {
+      font-size: 1.75rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      text-align: center;
+      margin-bottom: 6px;
+    }
+    .modal-sub {
+      color: var(--muted);
+      font-size: 0.9rem;
+      text-align: center;
+      margin-bottom: 32px;
+    }
+
+    .form-group {
+      width: 100%;
+      max-width: 420px;
+      margin-bottom: 18px;
+    }
+    .form-group label {
+      display: block;
+      font-size: 0.72rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 8px;
+      font-weight: 600;
+    }
+    .form-group input,
+    .form-group select {
+      width: 100%;
+      padding: 15px 16px;
+      font-size: 1.05rem;
+      background: var(--bg3);
+      border: 1.5px solid var(--border);
+      border-radius: 12px;
+      color: var(--text);
+      outline: none;
+      -webkit-appearance: none;
+      appearance: none;
+      transition: border-color 0.15s;
+    }
+    .form-group input:focus,
+    .form-group select:focus { border-color: var(--red); }
+    .form-group select {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23888' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 16px center;
+      padding-right: 40px;
+    }
+
+    .btn {
+      display: block;
+      width: 100%;
+      max-width: 420px;
+      padding: 17px;
+      font-size: 1.1rem;
+      font-weight: 700;
+      border: none;
+      border-radius: 14px;
+      cursor: pointer;
+      text-align: center;
+      transition: opacity 0.15s, transform 0.1s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .btn:active { opacity: 0.85; transform: scale(0.98); }
+    .btn-red { background: var(--red); color: #fff; }
+    .btn-outline { background: transparent; color: var(--red); border: 2px solid var(--red); }
+    .btn-dark { background: var(--bg3); color: var(--text); border: 1.5px solid var(--border); margin-top: 12px; }
+
+    /* ===== FLASH OVERLAY ===== */
+    #flash-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(229, 62, 62, 0);
+      pointer-events: none;
+      z-index: 800;
+      transition: background 0.05s ease-out;
+    }
+    #flash-overlay.active { background: rgba(229, 62, 62, 0.38); }
+
+    /* ===== MAIN APP ===== */
+    #app {
+      display: none;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+    #app.visible { display: flex; }
+
+    /* Session bar */
+    #session-bar {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+    #session-labels {
+      font-size: 0.85rem;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    #session-labels strong { color: var(--text); }
+    #recording-pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: var(--red);
+      white-space: nowrap;
+    }
+    #rec-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--red);
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+    #timer {
+      font-size: 1rem;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.05em;
+    }
+
+    /* Error banner */
+    #mic-error {
+      display: none;
+      margin: 12px 16px;
+      padding: 14px 16px;
+      background: #2d0f0f;
+      border: 1.5px solid var(--red);
+      border-radius: 10px;
+      color: #fc8181;
+      font-size: 0.88rem;
+      line-height: 1.5;
+    }
+
+    /* dB section */
+    #db-section {
+      padding: 14px 16px 10px;
+      background: var(--bg);
+    }
+    .section-label {
+      font-size: 0.68rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+    #db-value {
+      font-size: 3.8rem;
+      font-weight: 900;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.03em;
+      text-align: center;
+      line-height: 1;
+      color: var(--green);
+      transition: color 0.1s;
+      margin-bottom: 8px;
+    }
+    #db-value.warn { color: var(--amber); }
+    #db-value.danger { color: var(--red); }
+
+    #db-bar-track {
+      height: 20px;
+      background: var(--bg3);
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+    #db-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--green) 0%, var(--amber) 60%, var(--red) 100%);
+      border-radius: 10px;
+      transition: width 0.04s linear;
+    }
+
+    /* Canvas sections */
+    .canvas-section {
+      padding: 10px 16px;
+      background: var(--bg);
+      border-top: 1px solid var(--border);
+    }
+    .canvas-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+    .legend {
+      display: flex;
+      gap: 10px;
+      font-size: 0.68rem;
+      font-weight: 700;
+    }
+    .leg-x { color: var(--red); }
+    .leg-y { color: var(--green); }
+    .leg-z { color: var(--blue); }
+
+    canvas {
+      display: block;
+      width: 100%;
+      border-radius: 8px;
+      background: #080808;
+    }
+    #waveform-canvas { height: 72px; }
+    #accel-canvas { height: 80px; }
+
+    /* Controls */
+    #controls {
+      padding: 14px 16px;
+      background: var(--bg2);
+      border-top: 1px solid var(--border);
+    }
+    .slider-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+    .slider-row label {
+      font-size: 0.72rem;
+      color: var(--muted);
+      white-space: nowrap;
+      min-width: 90px;
+    }
+    .slider-row input[type=range] {
+      flex: 1;
+      -webkit-appearance: none;
+      appearance: none;
+      height: 28px;
+      background: transparent;
+      outline: none;
+    }
+    .slider-row input[type=range]::-webkit-slider-runnable-track {
+      height: 4px;
+      background: var(--bg3);
+      border-radius: 2px;
+      border: 1px solid var(--border);
+    }
+    .slider-row input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--red);
+      margin-top: -12px;
+      cursor: pointer;
+      border: 2px solid #fff;
+    }
+    .slider-row input[type=range]::-moz-range-thumb {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: var(--red);
+      border: 2px solid #fff;
+      cursor: pointer;
+    }
+    .slider-val {
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: var(--text);
+      min-width: 60px;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    #btn-stop {
+      margin-top: 4px;
+    }
+
+    /* Event log */
+    #event-section {
+      padding: 12px 16px 24px;
+      background: var(--bg);
+      border-top: 1px solid var(--border);
+      flex: 1;
+    }
+    .event-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    #event-count-badge {
+      background: var(--red);
+      color: #fff;
+      font-size: 0.72rem;
+      font-weight: 800;
+      padding: 2px 8px;
+      border-radius: 20px;
+      min-width: 28px;
+      text-align: center;
+    }
+    #event-log {
+      max-height: 240px;
+      overflow-y: auto;
+      background: #080808;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      -webkit-overflow-scrolling: touch;
+    }
+    .event-placeholder {
+      padding: 20px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+    .event-item {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.82rem;
+    }
+    .event-item:last-child { border-bottom: none; }
+    .event-type-label {
+      font-weight: 700;
+      margin-bottom: 3px;
+    }
+    .event-meta {
+      color: var(--muted);
+      font-size: 0.72rem;
+      font-variant-numeric: tabular-nums;
+    }
+    .ev-knock .event-type-label { color: var(--amber); }
+    .ev-rumble .event-type-label { color: var(--blue); }
+    .ev-motion .event-type-label { color: var(--purple); }
+    .ev-confirmed .event-type-label { color: var(--red); }
+    .ev-spike .event-type-label { color: var(--green); }
+
+    /* Stopped state */
+    #stopped-banner {
+      display: none;
+      padding: 14px 16px;
+      background: #0d2010;
+      border: 1.5px solid #276749;
+      border-radius: 10px;
+      margin: 12px 16px;
+      color: #68d391;
+      font-size: 0.88rem;
+      text-align: center;
+    }
+
+    @media (min-width: 600px) {
+      .modal-overlay { padding: 40px; }
+      #db-value { font-size: 5rem; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Flash overlay -->
+<div id="flash-overlay"></div>
+
+<!-- ===== SETUP MODAL ===== -->
+<div id="setup-modal" class="modal-overlay">
+  <div class="modal-icon">&#128267;</div>
+  <h1 class="modal-title">Elevator Monitor</h1>
+  <p class="modal-sub">Configure your session before recording</p>
+
+  <div class="form-group">
+    <label for="lift-input">Lift / Elevator</label>
+    <input type="text" id="lift-input" placeholder="e.g. Lift A, Lift B, Car 3…" value="Lift A" autocomplete="off">
+  </div>
+
+  <div class="form-group">
+    <label for="direction-input">Direction of Travel</label>
+    <select id="direction-input">
+      <option value="Up">Up &#8593;</option>
+      <option value="Down">Down &#8595;</option>
+      <option value="Unknown">Unknown</option>
+    </select>
+  </div>
+
+  <button class="btn btn-red" onclick="startSession()">Start Monitoring</button>
+</div>
+
+<!-- ===== iOS MOTION PERMISSION ===== -->
+<div id="ios-permission-modal" class="modal-overlay hidden">
+  <div class="modal-icon">&#128246;</div>
+  <h1 class="modal-title">Motion Access</h1>
+  <p class="modal-sub" style="max-width:360px">iOS requires explicit permission to access the motion sensor. Tap below to allow vibration detection.</p>
+  <button class="btn btn-red" style="max-width:320px" onclick="requestIOSMotion()">Allow Motion Sensor</button>
+  <button class="btn btn-dark" style="max-width:320px" onclick="skipMotion()">Skip (audio only)</button>
+</div>
+
+<!-- ===== MAIN APP ===== -->
+<div id="app">
+
+  <div id="session-bar">
+    <div id="session-labels">
+      <strong id="bar-lift">—</strong>
+      &nbsp;&#183;&nbsp;
+      <strong id="bar-dir">—</strong>
+    </div>
+    <div id="recording-pill">
+      <div id="rec-dot"></div>
+      <span id="timer">00:00</span>
+    </div>
+  </div>
+
+  <div id="mic-error">
+    &#9888; Microphone access denied. Please allow microphone permission in your browser settings and reload the page.
+  </div>
+
+  <div id="stopped-banner">
+    &#10003; Session complete. Exports are downloading now.
+    <br><br>
+    <button class="btn btn-outline" style="max-width:280px;margin:0 auto;font-size:0.95rem;padding:13px" onclick="location.reload()">New Session</button>
+  </div>
+
+  <!-- dB Meter -->
+  <div id="db-section">
+    <div class="section-label">Sound Level</div>
+    <div id="db-value">&#8212;</div>
+    <div id="db-bar-track">
+      <div id="db-bar-fill"></div>
+    </div>
+  </div>
+
+  <!-- Waveform -->
+  <div class="canvas-section">
+    <div class="canvas-header">
+      <div class="section-label" style="margin:0">Live Waveform</div>
+    </div>
+    <canvas id="waveform-canvas"></canvas>
+  </div>
+
+  <!-- Accelerometer -->
+  <div class="canvas-section">
+    <div class="canvas-header">
+      <div class="section-label" style="margin:0">Accelerometer</div>
+      <div class="legend">
+        <span class="leg-x">X</span>
+        <span class="leg-y">Y</span>
+        <span class="leg-z">Z</span>
+      </div>
+    </div>
+    <canvas id="accel-canvas"></canvas>
+  </div>
+
+  <!-- Controls -->
+  <div id="controls">
+    <div class="slider-row">
+      <label>dB Spike</label>
+      <input type="range" id="db-thresh-slider" min="5" max="30" value="15"
+             oninput="onDbThreshChange(this.value)">
+      <span class="slider-val" id="db-thresh-val">15 dB</span>
+    </div>
+    <div class="slider-row">
+      <label>Motion</label>
+      <input type="range" id="motion-thresh-slider" min="1" max="20" value="5"
+             oninput="onMotionThreshChange(this.value)">
+      <span class="slider-val" id="motion-thresh-val">0.5 m/s²</span>
+    </div>
+    <button class="btn btn-outline" id="btn-stop" onclick="stopAndExport()">Stop &amp; Export</button>
+  </div>
+
+  <!-- Event Log -->
+  <div id="event-section">
+    <div class="event-header">
+      <div class="section-label" style="margin:0">Event Log</div>
+      <div id="event-count-badge">0</div>
+    </div>
+    <div id="event-log">
+      <div class="event-placeholder">No events detected yet</div>
+    </div>
+  </div>
+
+</div><!-- #app -->
+
+<script>
+'use strict';
+
+// ============================================================
+// Constants
+// ============================================================
+const FFT_SIZE       = 2048;
+const GRAPH_POINTS   = 300;
+const DB_FLOOR       = -90;    // dBFS below which we treat as silence
+const DB_CEILING     = 0;
+const ACCEL_MAX_DISP = 15;     // m/s² for graph scale
+const COOLDOWN_MS    = 600;    // min ms between logged events
+const CORR_WINDOW_MS = 500;    // audio/motion correlation window
+const BASELINE_SAMPLES = 25;   // motion samples before baseline is set
+
+// ============================================================
+// Mutable state
+// ============================================================
+const state = {
+  lift: '',
+  direction: '',
+  startTime: null,
+  events: [],
+  running: false,
+
+  // Audio
+  audioCtx:    null,
+  analyser:    null,
+  stream:      null,
+  rafId:       null,
+
+  // Detection
+  dbSpikeThresh:    15,    // dB
+  motionThresh:     0.5,   // m/s²
+  prevDb:           DB_FLOOR,
+  prevDbAt:         0,
+  lastEventAt:      0,
+  recentAudioEvts:  [],    // [{time}]
+  recentMotionEvts: [],    // [{time}]
+
+  // Motion
+  motionEnabled:    false,
+  motionBaseline:   null,
+  motionSamples:    [],
+  lastMotion:       { x: 0, y: 0, z: 0, mag: 0 },
+
+  // Graphs
+  waveformBuf:  new Float32Array(FFT_SIZE / 2),
+  accelX: [],
+  accelY: [],
+  accelZ: [],
+
+  // Timer / Wake lock
+  timerInterval: null,
+  wakeLock:      null,
+
+  // Canvas pixel caches (avoid layout thrash every frame)
+  wvW: 0, wvH: 0,
+  acW: 0, acH: 0,
+};
+
+// ============================================================
+// Session setup
+// ============================================================
+function startSession() {
+  state.lift      = (document.getElementById('lift-input').value.trim() || 'Lift').replace(/"/g, '');
+  state.direction = document.getElementById('direction-input').value;
+  state.startTime = new Date();
+  state.events    = [];
+
+  document.getElementById('bar-lift').textContent = state.lift;
+  document.getElementById('bar-dir').textContent  = state.direction;
+  document.getElementById('setup-modal').classList.add('hidden');
+  document.getElementById('app').classList.add('visible');
+
+  // iOS DeviceMotion requires user gesture → show permission screen first
+  if (typeof DeviceMotionEvent !== 'undefined' &&
+      typeof DeviceMotionEvent.requestPermission === 'function') {
+    document.getElementById('ios-permission-modal').classList.remove('hidden');
+  } else {
+    // Non-iOS: attach listener directly (works or silently does nothing)
+    attachMotionListener();
+    initAudio();
+  }
+}
+
+async function requestIOSMotion() {
+  document.getElementById('ios-permission-modal').classList.add('hidden');
+  try {
+    const result = await DeviceMotionEvent.requestPermission();
+    if (result === 'granted') attachMotionListener();
+  } catch (e) {
+    console.warn('Motion permission error:', e);
+  }
+  initAudio();
+}
+
+function skipMotion() {
+  document.getElementById('ios-permission-modal').classList.add('hidden');
+  initAudio();
+}
+
+// ============================================================
+// Audio initialisation
+// ============================================================
+async function initAudio() {
+  try {
+    state.stream   = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    state.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    state.analyser = state.audioCtx.createAnalyser();
+    state.analyser.fftSize               = FFT_SIZE;
+    state.analyser.smoothingTimeConstant = 0.55;
+    state.audioCtx.createMediaStreamSource(state.stream).connect(state.analyser);
+
+    state.running = true;
+    startTimer();
+    acquireWakeLock();
+    measureCanvases();
+    rafLoop();
+  } catch (err) {
+    document.getElementById('mic-error').style.display = 'block';
+    console.error('Microphone error:', err);
+  }
+}
+
+// ============================================================
+// Motion
+// ============================================================
+function attachMotionListener() {
+  state.motionEnabled = true;
+  window.addEventListener('devicemotion', onDeviceMotion, { passive: true });
+}
+
+function onDeviceMotion(evt) {
+  if (!state.running) return;
+
+  const a = evt.accelerationIncludingGravity || evt.acceleration;
+  if (!a) return;
+
+  const x   = a.x || 0;
+  const y   = a.y || 0;
+  const z   = a.z || 0;
+  const mag = Math.sqrt(x * x + y * y + z * z);
+
+  state.lastMotion = { x, y, z, mag };
+
+  // Push to graph buffer
+  state.accelX.push(x);
+  state.accelY.push(y);
+  state.accelZ.push(z);
+  if (state.accelX.length > GRAPH_POINTS) {
+    state.accelX.shift();
+    state.accelY.shift();
+    state.accelZ.shift();
+  }
+
+  // Baseline calibration
+  if (state.motionBaseline === null) {
+    state.motionSamples.push(mag);
+    if (state.motionSamples.length >= BASELINE_SAMPLES) {
+      state.motionBaseline = state.motionSamples.reduce((a, b) => a + b, 0) / state.motionSamples.length;
+    }
+    return;
+  }
+
+  // Spike detection
+  if (mag > state.motionBaseline + state.motionThresh) {
+    const now = Date.now();
+    // Correlation with recent audio
+    const paired = state.recentAudioEvts.findIndex(e => now - e.time < CORR_WINDOW_MS);
+    if (paired !== -1) {
+      state.recentAudioEvts.splice(paired, 1);
+      emitEvent('Confirmed: Knock+Vibration', state.prevDb, x, y, z, mag);
+    } else {
+      state.recentMotionEvts.push({ time: now });
+      purgeOld(state.recentMotionEvts, 1500);
+      emitEvent('Motion: Vibration', state.prevDb, x, y, z, mag);
+    }
+  }
+}
+
+// ============================================================
+// RAF draw + detect loop
+// ============================================================
+const freqBuf = new Float32Array(FFT_SIZE / 2);
+const timeBuf = new Float32Array(FFT_SIZE / 2);
+
+function rafLoop() {
+  if (!state.running) return;
+  state.rafId = requestAnimationFrame(rafLoop);
+
+  state.analyser.getFloatFrequencyData(freqBuf);
+  state.analyser.getFloatTimeDomainData(timeBuf);
+
+  // Waveform buffer — copy latest time-domain data
+  state.waveformBuf.set(timeBuf);
+
+  // Peak dB level
+  let peak = DB_FLOOR;
+  for (let i = 0; i < freqBuf.length; i++) {
+    if (freqBuf[i] > peak) peak = freqBuf[i];
+  }
+  const db = Math.max(DB_FLOOR, Math.min(DB_CEILING, peak));
+
+  updateDbDisplay(db);
+  detectAudioSpike(db, freqBuf);
+  drawWaveform();
+  drawAccel();
+
+  state.prevDb   = db;
+  state.prevDbAt = Date.now();
+}
+
+// ============================================================
+// dB display update
+// ============================================================
+function updateDbDisplay(db) {
+  const el   = document.getElementById('db-value');
+  el.textContent = db.toFixed(1) + ' dB';
+  el.className = db > -20 ? 'danger' : db > -45 ? 'warn' : '';
+
+  // Bar fill: DB_FLOOR → 0 maps to 0% → 100%
+  const pct = ((db - DB_FLOOR) / (DB_CEILING - DB_FLOOR)) * 100;
+  document.getElementById('db-bar-fill').style.width = Math.max(0, pct) + '%';
+}
+
+// ============================================================
+// Audio spike + frequency analysis
+// ============================================================
+function detectAudioSpike(db, freqData) {
+  const now  = Date.now();
+  const rise = db - state.prevDb;
+  const dt   = now - state.prevDbAt;
+
+  if (rise >= state.dbSpikeThresh && dt <= 120) {
+    const sampleRate = state.audioCtx.sampleRate;
+    const binHz      = sampleRate / FFT_SIZE;
+
+    // Frequency band energies
+    const lowE  = bandEnergy(freqData, 20,   200,  binHz);   // rumble
+    const midE  = bandEnergy(freqData, 200,  2000, binHz);   // knocking
+    const highE = bandEnergy(freqData, 2000, 8000, binHz);   // sharp transients
+
+    let type;
+    if (midE > lowE * 1.8 && midE > highE * 0.5) {
+      type = 'Knock (200–2000 Hz transient)';
+    } else if (lowE >= midE * 1.5) {
+      type = 'Rumble (20–200 Hz low-freq)';
+    } else if (highE > midE) {
+      type = 'Sharp Transient (>2 kHz)';
+    } else {
+      type = 'Audio Spike';
+    }
+
+    const { x, y, z, mag } = state.lastMotion;
+
+    // Correlate with recent motion
+    const paired = state.recentMotionEvts.findIndex(e => now - e.time < CORR_WINDOW_MS);
+    if (paired !== -1) {
+      state.recentMotionEvts.splice(paired, 1);
+      emitEvent('Confirmed: Knock+Vibration', db, x, y, z, mag);
+    } else {
+      state.recentAudioEvts.push({ time: now });
+      purgeOld(state.recentAudioEvts, 1500);
+      emitEvent(type, db, x, y, z, mag);
+    }
+  }
+}
+
+function bandEnergy(freqData, fLow, fHigh, binHz) {
+  const lo = Math.max(1, Math.round(fLow / binHz));
+  const hi = Math.min(freqData.length - 1, Math.round(fHigh / binHz));
+  let e = 0;
+  for (let i = lo; i <= hi; i++) {
+    e += Math.pow(10, freqData[i] / 10);
+  }
+  return e;
+}
+
+function purgeOld(arr, maxAgeMs) {
+  const cutoff = Date.now() - maxAgeMs;
+  for (let i = arr.length - 1; i >= 0; i--) {
+    if (arr[i].time < cutoff) arr.splice(i, 1);
+  }
+}
+
+// ============================================================
+// Event emission + logging
+// ============================================================
+function emitEvent(type, db, x, y, z, mag) {
+  const now = Date.now();
+  if (now - state.lastEventAt < COOLDOWN_MS) return;   // debounce
+  state.lastEventAt = now;
+
+  const evt = {
+    timestamp: new Date().toISOString(),
+    lift:      state.lift,
+    direction: state.direction,
+    type,
+    db:  parseFloat(db.toFixed(2)),
+    x:   parseFloat(x.toFixed(4)),
+    y:   parseFloat(y.toFixed(4)),
+    z:   parseFloat(z.toFixed(4)),
+    mag: parseFloat(mag.toFixed(4)),
+  };
+  state.events.push(evt);
+  renderEventItem(evt);
+  flashOverlay();
+}
+
+function renderEventItem(evt) {
+  const log = document.getElementById('event-log');
+
+  // Remove placeholder if present
+  const ph = log.querySelector('.event-placeholder');
+  if (ph) ph.remove();
+
+  const cls = evt.type.includes('Confirmed') ? 'ev-confirmed'
+            : evt.type.includes('Motion')    ? 'ev-motion'
+            : evt.type.includes('Rumble')    ? 'ev-rumble'
+            : evt.type.includes('Knock')     ? 'ev-knock'
+            : 'ev-spike';
+
+  const div = document.createElement('div');
+  div.className = `event-item ${cls}`;
+  div.innerHTML =
+    `<div class="event-type-label">${escHtml(evt.type)}</div>` +
+    `<div class="event-meta">` +
+      `${new Date(evt.timestamp).toLocaleTimeString()} &middot; ` +
+      `${evt.db} dBFS &middot; mag ${evt.mag} m/s&sup2;` +
+    `</div>`;
+
+  log.insertBefore(div, log.firstChild);
+  document.getElementById('event-count-badge').textContent = state.events.length;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ============================================================
+// Flash overlay
+// ============================================================
+let flashTimer = null;
+function flashOverlay() {
+  const ov = document.getElementById('flash-overlay');
+  ov.classList.add('active');
+  if (flashTimer) clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => ov.classList.remove('active'), 160);
+}
+
+// ============================================================
+// Canvas drawing
+// ============================================================
+function measureCanvases() {
+  const wc = document.getElementById('waveform-canvas');
+  const ac = document.getElementById('accel-canvas');
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+  state.wvW = wc.offsetWidth  * dpr;
+  state.wvH = wc.offsetHeight * dpr;
+  wc.width  = state.wvW;
+  wc.height = state.wvH;
+
+  state.acW = ac.offsetWidth  * dpr;
+  state.acH = ac.offsetHeight * dpr;
+  ac.width  = state.acW;
+  ac.height = state.acH;
+}
+
+window.addEventListener('resize', measureCanvases, { passive: true });
+
+function drawWaveform() {
+  const canvas = document.getElementById('waveform-canvas');
+  const ctx    = canvas.getContext('2d');
+  const W = state.wvW, H = state.wvH;
+  if (!W || !H) return;
+
+  ctx.fillStyle = '#080808';
+  ctx.fillRect(0, 0, W, H);
+
+  // Centre grid line
+  ctx.strokeStyle = '#1e1e1e';
+  ctx.lineWidth   = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, H / 2);
+  ctx.lineTo(W, H / 2);
+  ctx.stroke();
+
+  const buf    = state.waveformBuf;
+  const len    = buf.length;
+  const sliceW = W / len;
+  ctx.strokeStyle = '#00e676';
+  ctx.lineWidth   = 1.5;
+  ctx.beginPath();
+  for (let i = 0; i < len; i++) {
+    const y = (buf[i] * 0.48 + 0.5) * H;
+    if (i === 0) ctx.moveTo(0, y);
+    else ctx.lineTo(i * sliceW, y);
+  }
+  ctx.stroke();
+}
+
+function drawAccel() {
+  const canvas = document.getElementById('accel-canvas');
+  const ctx    = canvas.getContext('2d');
+  const W = state.acW, H = state.acH;
+  if (!W || !H) return;
+
+  ctx.fillStyle = '#080808';
+  ctx.fillRect(0, 0, W, H);
+
+  // Zero line
+  ctx.strokeStyle = '#1e1e1e';
+  ctx.lineWidth   = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, H / 2);
+  ctx.lineTo(W, H / 2);
+  ctx.stroke();
+
+  if (state.accelX.length < 2) return;
+
+  const drawLine = (data, color) => {
+    const len = data.length;
+    ctx.strokeStyle = color;
+    ctx.lineWidth   = 1.5;
+    ctx.beginPath();
+    for (let i = 0; i < len; i++) {
+      const x = (i / (GRAPH_POINTS - 1)) * W;
+      const y = H / 2 - (data[i] / ACCEL_MAX_DISP) * (H / 2 * 0.88);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  };
+
+  drawLine(state.accelX, '#e53e3e');
+  drawLine(state.accelY, '#00e676');
+  drawLine(state.accelZ, '#3182ce');
+}
+
+// ============================================================
+// Timer
+// ============================================================
+function startTimer() {
+  const el = document.getElementById('timer');
+  state.timerInterval = setInterval(() => {
+    if (!state.startTime) return;
+    const s = Math.floor((Date.now() - state.startTime) / 1000);
+    el.textContent = pad2(Math.floor(s / 60)) + ':' + pad2(s % 60);
+  }, 500);
+}
+
+function pad2(n) { return String(n).padStart(2, '0'); }
+
+// ============================================================
+// Wake Lock
+// ============================================================
+async function acquireWakeLock() {
+  if ('wakeLock' in navigator) {
+    try { state.wakeLock = await navigator.wakeLock.request('screen'); }
+    catch (e) { /* not critical */ }
+  }
+}
+
+// Re-acquire after page visibility change
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && state.running) acquireWakeLock();
+});
+
+// ============================================================
+// Slider controls
+// ============================================================
+function onDbThreshChange(v) {
+  state.dbSpikeThresh = parseInt(v, 10);
+  document.getElementById('db-thresh-val').textContent = v + ' dB';
+}
+
+function onMotionThreshChange(v) {
+  // slider range 1–20 → 0.1–2.0 m/s²
+  state.motionThresh = v / 10;
+  document.getElementById('motion-thresh-val').textContent = (v / 10).toFixed(1) + ' m/s\u00B2';
+}
+
+// ============================================================
+// Stop & Export
+// ============================================================
+function stopAndExport() {
+  if (!state.running) return;
+  state.running = false;
+
+  cancelAnimationFrame(state.rafId);
+  clearInterval(state.timerInterval);
+
+  if (state.wakeLock) { state.wakeLock.release(); state.wakeLock = null; }
+  if (state.audioCtx) { state.audioCtx.close(); }
+  if (state.stream)   { state.stream.getTracks().forEach(t => t.stop()); }
+  window.removeEventListener('devicemotion', onDeviceMotion);
+
+  // UI update
+  document.getElementById('rec-dot').style.display  = 'none';
+  document.getElementById('btn-stop').disabled       = true;
+  document.getElementById('btn-stop').textContent    = 'Exporting…';
+
+  const endTime = new Date();
+  if (state.events.length === 0) {
+    document.getElementById('stopped-banner').style.display = 'block';
+    document.getElementById('stopped-banner').textContent   =
+      'Session ended. No events were recorded — nothing to export.';
+    document.getElementById('btn-stop').textContent = 'No events';
+    return;
+  }
+
+  const slug = buildSlug(endTime);
+  exportCSV(slug);
+  setTimeout(() => exportPDF(slug, endTime), 400);
+
+  document.getElementById('stopped-banner').style.display = 'block';
+  document.getElementById('btn-stop').textContent = 'Exported';
+}
+
+function buildSlug(endTime) {
+  const lift = state.lift.replace(/\s+/g, '');
+  const dir  = state.direction;
+  const date = endTime.toISOString().slice(0, 10);
+  const time = endTime.toTimeString().slice(0, 5).replace(':', '-');
+  return `${lift}_${dir}_${date}_${time}`;
+}
+
+// ============================================================
+// CSV export
+// ============================================================
+function exportCSV(slug) {
+  const cols = ['timestamp','lift','direction','type','db','x','y','z','magnitude'];
+  const lines = [cols.join(',')];
+  state.events.forEach(e => {
+    lines.push([
+      csvCell(e.timestamp), csvCell(e.lift), csvCell(e.direction),
+      csvCell(e.type), e.db, e.x, e.y, e.z, e.mag
+    ].join(','));
+  });
+  downloadBlob(slug + '.csv', 'text/csv;charset=utf-8;', lines.join('\r\n'));
+}
+
+function csvCell(v) { return '"' + String(v).replace(/"/g, '""') + '"'; }
+
+// ============================================================
+// PDF export
+// ============================================================
+function exportPDF(slug, endTime) {
+  if (!window.jspdf) { console.error('jsPDF not loaded'); return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+  const duration  = Math.floor((endTime - state.startTime) / 1000);
+  const durStr    = Math.floor(duration / 60) + 'm ' + (duration % 60) + 's';
+
+  const RED_FILL = [255, 200, 200];
+  const RED_TEXT = [140, 0,   0  ];
+  const HDR_FILL = [28,  28,  28 ];
+  const HDR_TEXT = [240, 240, 240];
+
+  // Title
+  doc.setFontSize(22);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Elevator Monitor — Session Report', 14, 22);
+
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(120);
+  doc.text('Generated: ' + endTime.toLocaleString(), 14, 29);
+  doc.setTextColor(0);
+
+  // Session summary table
+  doc.autoTable({
+    startY: 34,
+    head:   [['Field', 'Value']],
+    body: [
+      ['Lift / Elevator', state.lift],
+      ['Direction',       state.direction],
+      ['Session Start',   state.startTime.toLocaleString()],
+      ['Session End',     endTime.toLocaleString()],
+      ['Duration',        durStr],
+      ['Total Events',    state.events.length],
+    ],
+    theme: 'grid',
+    headStyles:    { fillColor: HDR_FILL, textColor: HDR_TEXT, fontStyle: 'bold' },
+    columnStyles:  { 0: { fontStyle: 'bold', cellWidth: 52 } },
+    styles:        { fontSize: 9 },
+  });
+
+  // Event type breakdown
+  const counts = {};
+  state.events.forEach(e => { counts[e.type] = (counts[e.type] || 0) + 1; });
+
+  let y = doc.lastAutoTable.finalY + 10;
+  doc.setFontSize(13);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Event Breakdown', 14, y);
+
+  doc.autoTable({
+    startY: y + 3,
+    head:   [['Event Type', 'Count']],
+    body:   Object.entries(counts),
+    theme:  'grid',
+    headStyles: { fillColor: HDR_FILL, textColor: HDR_TEXT },
+    styles:     { fontSize: 9 },
+  });
+
+  // Audio events table
+  const audioEvts  = state.events.filter(e => !e.type.startsWith('Motion:'));
+  const motionEvts = state.events.filter(e =>  e.type.startsWith('Motion:'));
+
+  y = doc.lastAutoTable.finalY + 10;
+  if (y > 240) { doc.addPage(); y = 16; }
+
+  doc.setFontSize(13);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Audio / Knock Events (' + audioEvts.length + ')', 14, y);
+
+  if (audioEvts.length > 0) {
+    doc.autoTable({
+      startY: y + 3,
+      head:   [['Time', 'Type', 'dBFS', 'X', 'Y', 'Z', 'Mag']],
+      body:   audioEvts.map(e => [
+        new Date(e.timestamp).toLocaleTimeString(),
+        e.type, e.db, e.x, e.y, e.z, e.mag
+      ]),
+      theme:      'grid',
+      headStyles: { fillColor: HDR_FILL, textColor: HDR_TEXT },
+      styles:     { fontSize: 7.5 },
+      didParseCell(data) {
+        if (data.section !== 'body') return;
+        const ev = audioEvts[data.row.index];
+        if (ev && ev.type.includes('Confirmed')) {
+          data.cell.styles.fillColor  = RED_FILL;
+          data.cell.styles.textColor  = RED_TEXT;
+          data.cell.styles.fontStyle  = 'bold';
+        }
+      },
+    });
+  } else {
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(150);
+    doc.text('(none)', 14, y + 8);
+    doc.setTextColor(0);
+  }
+
+  // Motion events table
+  y = (doc.lastAutoTable ? doc.lastAutoTable.finalY : y + 14) + 10;
+  if (y > 240) { doc.addPage(); y = 16; }
+
+  doc.setFontSize(13);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Motion Events (' + motionEvts.length + ')', 14, y);
+
+  if (motionEvts.length > 0) {
+    doc.autoTable({
+      startY: y + 3,
+      head:   [['Time', 'Type', 'dBFS', 'X', 'Y', 'Z', 'Mag']],
+      body:   motionEvts.map(e => [
+        new Date(e.timestamp).toLocaleTimeString(),
+        e.type, e.db, e.x, e.y, e.z, e.mag
+      ]),
+      theme:      'grid',
+      headStyles: { fillColor: HDR_FILL, textColor: HDR_TEXT },
+      styles:     { fontSize: 7.5 },
+    });
+  } else {
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(150);
+    doc.text('(none)', 14, y + 8);
+    doc.setTextColor(0);
+  }
+
+  // Footer on each page
+  const pageCount = doc.getNumberOfPages();
+  for (let p = 1; p <= pageCount; p++) {
+    doc.setPage(p);
+    doc.setFontSize(7);
+    doc.setTextColor(160);
+    doc.text(
+      'Elevator Monitor Report · ' + state.lift + ' · ' + state.direction +
+      ' · Page ' + p + ' of ' + pageCount,
+      14, 290
+    );
+  }
+
+  doc.save(slug + '.pdf');
+}
+
+// ============================================================
+// Utility: download blob
+// ============================================================
+function downloadBlob(filename, mime, content) {
+  const blob = new Blob([content], { type: mime });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+</script>
+</body>
+</html>
