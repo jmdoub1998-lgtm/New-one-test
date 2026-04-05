@@ -1,0 +1,2477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Elevator Monitor</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --red:    #e53e3e;
+      --green:  #00e676;
+      --amber:  #ffab00;
+      --blue:   #3182ce;
+      --purple: #9f7aea;
+      --bg:     #0a0a0a;
+      --bg2:    #111111;
+      --bg3:    #1a1a1a;
+      --border: #2a2a2a;
+      --text:   #f0f0f0;
+      --muted:  #888888;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    /* ===== MODAL OVERLAYS ===== */
+    .modal-overlay {
+      position: fixed; inset: 0;
+      background: var(--bg2);
+      display: flex; flex-direction: column; align-items: center;
+      overflow-y: auto;
+      padding: 32px 24px 48px;
+      z-index: 900;
+    }
+    .modal-overlay.centered { justify-content: center; }
+    .modal-overlay.hidden   { display: none; }
+
+    .modal-icon  { font-size: 3rem; margin-bottom: 12px; margin-top: 8px; }
+    .modal-title { font-size: 1.75rem; font-weight: 800; letter-spacing: -0.02em; text-align: center; margin-bottom: 6px; }
+    .modal-sub   { color: var(--muted); font-size: 0.9rem; text-align: center; margin-bottom: 28px; max-width: 380px; }
+
+    .form-group { width: 100%; max-width: 440px; margin-bottom: 16px; }
+    .form-group label {
+      display: block; font-size: 0.72rem; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; font-weight: 600;
+    }
+    .form-group input, .form-group select {
+      width: 100%; padding: 15px 16px; font-size: 1.05rem;
+      background: var(--bg3); border: 1.5px solid var(--border); border-radius: 12px;
+      color: var(--text); outline: none; -webkit-appearance: none; appearance: none;
+      transition: border-color 0.15s;
+    }
+    .form-group input:focus, .form-group select:focus { border-color: var(--red); }
+    .form-group select {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23888' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 16px center; padding-right: 40px;
+    }
+
+    .setup-divider {
+      width: 100%; max-width: 440px;
+      display: flex; align-items: center; gap: 10px;
+      margin: 12px 0 18px; color: var(--muted);
+      font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 600;
+    }
+    .setup-divider::before, .setup-divider::after {
+      content: ''; flex: 1; height: 1px; background: var(--border);
+    }
+
+    .thresh-card {
+      width: 100%; max-width: 440px;
+      background: var(--bg3); border: 1.5px solid var(--border); border-radius: 12px;
+      padding: 16px; margin-bottom: 14px;
+    }
+    .thresh-card-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px; }
+    .thresh-card-lbl  { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600; }
+    .thresh-card-num  { font-size: 1.2rem; font-weight: 800; color: var(--text); font-variant-numeric: tabular-nums; }
+    .thresh-slider    { width: 100%; -webkit-appearance: none; appearance: none; height: 32px; background: transparent; outline: none; margin-bottom: 10px; }
+    .thresh-slider::-webkit-slider-runnable-track { height: 4px; background: var(--border); border-radius: 2px; }
+    .thresh-slider::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 30px; height: 30px; border-radius: 50%;
+      background: var(--red); margin-top: -13px; cursor: pointer; border: 2px solid #fff;
+    }
+    .thresh-slider::-moz-range-thumb {
+      width: 26px; height: 26px; border-radius: 50%; background: var(--red); border: 2px solid #fff; cursor: pointer;
+    }
+    .thresh-hint { font-size: 0.78rem; color: var(--muted); line-height: 1.5; }
+    .thresh-hint strong { color: #b0b0b0; }
+    .thresh-rec-hint { font-size: 0.72rem; color: #4a5568; margin-top: 6px; font-style: italic; min-height: 1em; }
+    .setup-reset-link { font-size: 0.72rem; color: var(--muted); text-decoration: underline; cursor: pointer; background: none; border: none; padding: 0; display: block; margin: 4px auto 16px; text-align: center; -webkit-tap-highlight-color: transparent; }
+    .setup-reset-link:hover { color: var(--red); }
+
+    .btn {
+      display: block; width: 100%; max-width: 440px; padding: 17px;
+      font-size: 1.1rem; font-weight: 700; border: none; border-radius: 14px;
+      cursor: pointer; text-align: center;
+      transition: opacity 0.15s, transform 0.1s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .btn:active  { opacity: 0.85; transform: scale(0.98); }
+    .btn-red     { background: var(--red); color: #fff; }
+    .btn-outline { background: transparent; color: var(--red); border: 2px solid var(--red); }
+    .btn-dark    { background: var(--bg3); color: var(--text); border: 1.5px solid var(--border); margin-top: 12px; }
+    .btn-blue    { background: #1e3a52; color: #63b3ed; border: 1.5px solid #2d5a7a; }
+
+    /* ===== FLASH OVERLAY ===== */
+    #flash-overlay {
+      position: fixed; inset: 0; background: rgba(229,62,62,0);
+      pointer-events: none; z-index: 800; transition: background 0.05s ease-out;
+    }
+    #flash-overlay.active { background: rgba(229,62,62,0.38); }
+
+    /* ===== MAIN APP ===== */
+    #app { display: none; flex-direction: column; min-height: 100vh; }
+    #app.visible { display: flex; }
+
+    #session-bar {
+      position: sticky; top: 0; z-index: 50;
+      background: var(--bg2); border-bottom: 1px solid var(--border);
+      padding: 10px 16px; display: flex; justify-content: space-between; align-items: center; gap: 12px;
+    }
+    #session-labels { font-size: 0.85rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #session-labels strong { color: var(--text); }
+    #recording-pill { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; font-weight: 700; color: var(--red); white-space: nowrap; }
+    #rec-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); animation: blink 1.2s ease-in-out infinite; }
+    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+    #timer { font-size: 1rem; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: 0.05em; }
+
+    #db-section { padding: 14px 16px 10px; background: var(--bg); }
+    .section-label { font-size: 0.68rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; font-weight: 700; margin-bottom: 6px; }
+    #db-value {
+      font-size: 3.8rem; font-weight: 900; font-variant-numeric: tabular-nums;
+      letter-spacing: -0.03em; text-align: center; line-height: 1; color: var(--green);
+      transition: color 0.1s; margin-bottom: 8px;
+    }
+    #db-value.warn   { color: var(--amber); }
+    #db-value.danger { color: var(--red); }
+    #db-bar-track { height: 20px; background: var(--bg3); border-radius: 10px; overflow: hidden; border: 1px solid var(--border); }
+    #db-bar-fill  { height: 100%; width: 0%; background: linear-gradient(90deg, var(--green) 0%, var(--amber) 60%, var(--red) 100%); border-radius: 10px; transition: width 0.04s linear; }
+
+    .canvas-section { padding: 10px 16px; background: var(--bg); border-top: 1px solid var(--border); }
+    .canvas-header  { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+    .legend { display: flex; gap: 10px; font-size: 0.68rem; font-weight: 700; }
+    .leg-x { color: var(--red); } .leg-y { color: var(--green); } .leg-z { color: var(--blue); } .leg-mag { color: #ff8c00; }
+
+    canvas { display: block; width: 100%; border-radius: 8px; background: #080808; }
+    #db-graph-canvas { height: 76px; }
+    #accel-canvas    { height: 84px; }
+
+    #mic-error {
+      display: none; margin: 12px 16px; padding: 14px 16px;
+      background: #2d0f0f; border: 1.5px solid var(--red); border-radius: 10px;
+      color: #fc8181; font-size: 0.88rem; line-height: 1.5;
+    }
+
+    #controls { padding: 14px 16px; background: var(--bg2); border-top: 1px solid var(--border); }
+    #live-stats {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 10px; font-size: 0.72rem; color: #555;
+      font-variant-numeric: tabular-nums;
+    }
+    #live-stats span { color: var(--muted); }
+    #clip-counter { color: var(--amber); font-weight: 700; }
+
+    #event-section { padding: 12px 16px 24px; background: var(--bg); border-top: 1px solid var(--border); flex: 1; }
+    .event-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    #event-count-badge { background: var(--red); color: #fff; font-size: 0.72rem; font-weight: 800; padding: 2px 8px; border-radius: 20px; min-width: 28px; text-align: center; }
+    #event-log { max-height: 220px; overflow-y: auto; background: #080808; border-radius: 10px; border: 1px solid var(--border); -webkit-overflow-scrolling: touch; }
+    .event-placeholder { padding: 20px; text-align: center; color: var(--muted); font-size: 0.85rem; }
+    .event-item { padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 0.82rem; }
+    .event-item:last-child { border-bottom: none; }
+    .event-type-label { font-weight: 700; margin-bottom: 3px; }
+    .event-meta { color: var(--muted); font-size: 0.72rem; font-variant-numeric: tabular-nums; }
+    .ev-knock     .event-type-label { color: var(--amber); }
+    .ev-rumble    .event-type-label { color: var(--blue); }
+    .ev-motion    .event-type-label { color: var(--purple); }
+    .ev-confirmed .event-type-label { color: var(--red); }
+    .ev-spike     .event-type-label { color: var(--green); }
+
+    /* ===== EXPORT SCREEN ===== */
+    #export-screen {
+      position: fixed; inset: 0;
+      background: var(--bg2);
+      overflow-y: auto;
+      z-index: 900;
+      display: flex; flex-direction: column;
+    }
+    #export-screen.hidden { display: none; }
+
+    .exp-header {
+      background: var(--bg3); border-bottom: 1px solid var(--border);
+      padding: 28px 20px 20px; text-align: center; flex-shrink: 0;
+    }
+    .exp-header-icon  { font-size: 2.5rem; margin-bottom: 8px; }
+    .exp-header-title { font-size: 1.5rem; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 6px; }
+    .exp-header-meta  { font-size: 0.82rem; color: var(--muted); }
+
+    .exp-rec-panel {
+      padding: 12px 20px; background: #0d1a24;
+      border-bottom: 1px solid #1e3448; flex-shrink: 0;
+    }
+    .exp-rec-row  { display: flex; justify-content: space-between; align-items: baseline; padding: 4px 0; }
+    .exp-rec-lbl  { font-size: 0.7rem; color: #718096; text-transform: uppercase; letter-spacing: 0.06em; }
+    .exp-rec-val  { font-size: 0.9rem; font-weight: 800; color: #63b3ed; font-variant-numeric: tabular-nums; }
+
+    .exp-section { padding: 16px 20px 4px; }
+    .exp-section-label {
+      font-size: 0.68rem; color: var(--muted); text-transform: uppercase;
+      letter-spacing: 0.1em; font-weight: 700; margin-bottom: 10px;
+    }
+
+    .exp-dl-btn {
+      display: flex; align-items: center; gap: 12px;
+      width: 100%; padding: 14px 16px; margin-bottom: 10px;
+      background: var(--bg3); border: 1.5px solid var(--border); border-radius: 12px;
+      color: var(--text); text-decoration: none;
+      -webkit-tap-highlight-color: transparent;
+      transition: border-color 0.12s, background 0.12s;
+      cursor: pointer;
+    }
+    .exp-dl-btn:active { background: #222; }
+    .exp-dl-zip  { border-color: #2d5a7a; background: #0d1929; }
+    .exp-dl-zip:active { background: #142030; }
+    .exp-dl-zip .exp-dl-label { color: #63b3ed; }
+    .exp-dl-pdf  { border-color: #3a2020; }
+    .exp-dl-csv  { border-color: #1a3020; }
+    .exp-dl-clip { border-color: #2d2510; }
+
+    .exp-dl-icon  { font-size: 1.35rem; flex-shrink: 0; }
+    .exp-dl-info  { flex: 1; min-width: 0; }
+    .exp-dl-label {
+      display: block; font-size: 0.88rem; font-weight: 700;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .exp-dl-meta  { display: block; font-size: 0.7rem; color: var(--muted); margin-top: 2px; font-variant-numeric: tabular-nums; }
+    .exp-dl-arrow { font-size: 1.1rem; color: var(--muted); flex-shrink: 0; }
+
+    .exp-no-clips { font-size: 0.85rem; color: var(--muted); padding: 4px 0 10px; }
+
+    .exp-new-session { padding: 20px 20px 40px; border-top: 1px solid var(--border); margin-top: 8px; }
+    .exp-new-session .btn { max-width: none; }
+
+    /* ===== CAMERA PREVIEW TILE ===== */
+    #cam-tile {
+      display: none; position: fixed; top: 56px; right: 8px; z-index: 49;
+      width: 120px; background: #000; border-radius: 8px; overflow: hidden;
+      border: 1.5px solid var(--border); box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+    }
+    #cam-tile video { display: block; width: 100%; height: 90px; object-fit: cover; }
+    #cam-tile-label {
+      font-size: 0.55rem; color: #888; text-align: center; padding: 3px 4px;
+      background: #0a0a0a; text-transform: uppercase; letter-spacing: 0.06em; white-space: nowrap;
+      overflow: hidden; text-overflow: ellipsis;
+    }
+
+    /* ===== CAMERA SETUP BUTTON ===== */
+    .cam-perm-btn {
+      width: 100%; max-width: 440px; padding: 14px 16px; margin-bottom: 10px;
+      background: var(--bg3); border: 1.5px solid var(--border); border-radius: 12px;
+      color: var(--muted); font-size: 0.9rem; font-weight: 600; cursor: pointer; text-align: left;
+      display: flex; align-items: center; gap: 10px;
+      -webkit-tap-highlight-color: transparent;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .cam-perm-btn.ready { color: #68d391; border-color: #276749; }
+    .cam-perm-btn.denied { color: #fc8181; border-color: #742a2a; }
+
+    /* ===== LIVE EVENT TABLE ===== */
+    #event-log { max-height: 220px; overflow-y: auto; background: #080808; border-radius: 10px; border: 1px solid var(--border); -webkit-overflow-scrolling: touch; }
+    #evt-table { width: 100%; border-collapse: collapse; font-size: 0.75rem; }
+    #evt-table thead tr { background: #111; position: sticky; top: 0; z-index: 1; }
+    #evt-table th { padding: 6px 8px; text-align: left; font-size: 0.62rem; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; border-bottom: 1px solid var(--border); }
+    #evt-table td { padding: 6px 8px; border-bottom: 1px solid #111; vertical-align: middle; font-variant-numeric: tabular-nums; }
+    #evt-table tr:last-child td { border-bottom: none; }
+    .evt-placeholder td { color: var(--muted); text-align: center; padding: 20px; }
+    .evt-type-knock   { color: var(--amber); font-weight: 700; }
+    .evt-type-rumble  { color: var(--blue);  font-weight: 700; }
+    .evt-type-motion  { color: var(--purple);font-weight: 700; }
+    .evt-type-confirm { color: var(--red);   font-weight: 700; }
+    .evt-type-spike   { color: var(--green); font-weight: 700; }
+    .evt-thumb {
+      width: 40px; height: 30px; object-fit: cover; border-radius: 4px; cursor: pointer;
+      display: block; border: 1px solid var(--border);
+    }
+
+    /* ===== LIGHTBOX ===== */
+    #lightbox {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.92);
+      z-index: 9999; align-items: center; justify-content: center; flex-direction: column;
+    }
+    #lightbox.open { display: flex; }
+    #lb-img { max-width: 95vw; max-height: 85vh; border-radius: 8px; box-shadow: 0 8px 40px rgba(0,0,0,0.8); }
+    #lb-close {
+      position: absolute; top: 16px; right: 20px; font-size: 1.8rem; color: #fff; cursor: pointer;
+      background: none; border: none; line-height: 1; padding: 8px;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    /* ===== EXPORT SCREEN IMAGE BUTTON ===== */
+    .exp-dl-img { border-color: #1e2d20; }
+
+    @media (min-width: 600px) {
+      .modal-overlay { padding: 40px 40px 60px; }
+      #db-value { font-size: 5rem; }
+      .exp-header { padding: 36px 40px 24px; }
+      .exp-rec-panel, .exp-section, .exp-new-session { padding-left: 40px; padding-right: 40px; }
+      #cam-tile { width: 160px; }
+      #cam-tile video { height: 120px; }
+    }
+  </style>
+</head>
+<body>
+
+<div id="flash-overlay"></div>
+
+<!-- ===== SETUP MODAL ===== -->
+<div id="setup-modal" class="modal-overlay">
+  <div class="modal-icon">&#128267;</div>
+  <h1 class="modal-title">Elevator Monitor</h1>
+  <p class="modal-sub">Configure your session before recording begins</p>
+
+  <div class="form-group">
+    <label for="lift-input">Lift / Elevator</label>
+    <input type="text" id="lift-input" placeholder="e.g. Lift A, Lift B, Car 3…" autocomplete="off">
+  </div>
+
+  <div class="form-group">
+    <label for="direction-input">Direction of Travel</label>
+    <select id="direction-input">
+      <option value="Up">Up &#8593;</option>
+      <option value="Down">Down &#8595;</option>
+      <option value="Unknown">Unknown</option>
+    </select>
+  </div>
+
+  <div class="setup-divider"><span>Detection Sensitivity</span></div>
+
+  <div class="thresh-card">
+    <div class="thresh-card-head">
+      <span class="thresh-card-lbl">dB Spike Threshold</span>
+      <span class="thresh-card-num" id="s-db-num">15 dB rise</span>
+    </div>
+    <input type="range" class="thresh-slider" id="s-db-slider" min="5" max="30" value="15"
+           oninput="onSetupDb(this.value)">
+    <p class="thresh-hint">
+      Flags a sudden jump of this many dB within 100 ms as a knock event.<br>
+      <strong>Higher</strong> = only flag very sharp loud knocks &nbsp;·&nbsp;
+      <strong>Lower</strong> = catch quieter sounds too
+    </p>
+    <p class="thresh-rec-hint" id="s-db-rec"></p>
+  </div>
+
+  <div class="thresh-card">
+    <div class="thresh-card-head">
+      <span class="thresh-card-lbl">Motion Magnitude Threshold</span>
+      <span class="thresh-card-num" id="s-motion-num">0.5 m/s² above baseline</span>
+    </div>
+    <input type="range" class="thresh-slider" id="s-motion-slider" min="1" max="20" value="5"
+           oninput="onSetupMotion(this.value)">
+    <p class="thresh-hint">
+      Flags acceleration bursts above the session baseline by this amount.<br>
+      <strong>Higher</strong> = only flag strong shaking &nbsp;·&nbsp;
+      <strong>Lower</strong> = detect subtle vibrations
+    </p>
+    <p class="thresh-rec-hint" id="s-motion-rec"></p>
+  </div>
+
+  <button class="setup-reset-link" onclick="resetToDefaults()">Reset to defaults</button>
+
+  <div class="setup-divider"><span>Camera (Optional)</span></div>
+
+  <button class="cam-perm-btn" id="btn-camera" onclick="requestCameraPermission()">
+    <span>&#128247;</span>
+    <span>Enable Camera — Capture floor display images at each alert</span>
+  </button>
+
+  <button class="btn btn-red" style="margin-top:8px" onclick="startSession()">Start Monitoring</button>
+</div>
+
+<!-- ===== iOS MOTION PERMISSION ===== -->
+<div id="ios-permission-modal" class="modal-overlay centered hidden">
+  <div class="modal-icon">&#128246;</div>
+  <h1 class="modal-title">Motion Access</h1>
+  <p class="modal-sub">iOS requires a tap to unlock the motion sensor. Allow below to enable vibration detection.</p>
+  <button class="btn btn-red" style="max-width:320px" onclick="requestIOSMotion()">Allow Motion Sensor</button>
+  <button class="btn btn-dark" style="max-width:320px" onclick="skipMotion()">Skip (audio only)</button>
+</div>
+
+<!-- ===== MAIN APP ===== -->
+<div id="app">
+
+  <div id="session-bar">
+    <div id="session-labels">
+      <strong id="bar-lift">—</strong>&nbsp;&#183;&nbsp;<strong id="bar-dir">—</strong>
+    </div>
+    <div id="recording-pill">
+      <div id="rec-dot"></div>
+      <span id="timer">00:00</span>
+    </div>
+  </div>
+
+  <!-- Camera preview tile (fixed top-right during recording) -->
+  <div id="cam-tile">
+    <video id="cam-video" playsinline muted autoplay></video>
+    <div id="cam-tile-label">Aim at lift floor display</div>
+  </div>
+
+  <div id="mic-error">
+    &#9888; Microphone access denied. Please allow microphone permission in your browser settings and reload.
+  </div>
+
+  <!-- dB Meter -->
+  <div id="db-section">
+    <div class="section-label">Sound Level (Live)</div>
+    <div id="db-value">&#8212;</div>
+    <div id="db-bar-track"><div id="db-bar-fill"></div></div>
+  </div>
+
+  <!-- dB Time-Series Graph -->
+  <div class="canvas-section">
+    <div class="canvas-header">
+      <div class="section-label" style="margin:0">dB Level — Elapsed Time</div>
+      <div style="font-size:0.65rem;color:#444">&#8212;90 to 0 dBFS</div>
+    </div>
+    <canvas id="db-graph-canvas"></canvas>
+  </div>
+
+  <!-- Accelerometer Graph -->
+  <div class="canvas-section">
+    <div class="canvas-header">
+      <div class="section-label" style="margin:0">Accelerometer — Elapsed Time</div>
+      <div class="legend">
+        <span class="leg-x">X</span>
+        <span class="leg-y">Y</span>
+        <span class="leg-z">Z</span>
+        <span class="leg-mag">Mag</span>
+      </div>
+    </div>
+    <canvas id="accel-canvas"></canvas>
+  </div>
+
+  <!-- Controls -->
+  <div id="controls">
+    <div id="live-stats">
+      <div>Samples: <span id="sample-count">0</span> &nbsp;·&nbsp; Alerts: <span id="alert-count">0</span></div>
+      <div><span id="buffer-status" style="color:#555;font-variant-numeric:tabular-nums">Ring: —</span></div>
+      <div id="clip-counter" style="color:var(--amber);font-weight:700">Clips: 0 / 20</div>
+    </div>
+    <button class="btn btn-outline" id="btn-stop" onclick="stopAndExport()">Stop &amp; Export ZIP</button>
+    <div id="export-progress" style="display:none;margin-top:10px;font-size:0.82rem;color:var(--amber);text-align:center;font-variant-numeric:tabular-nums;"></div>
+  </div>
+
+  <!-- Event Log -->
+  <div id="event-section">
+    <div class="event-header">
+      <div class="section-label" style="margin:0">Alert Event Log</div>
+      <div id="event-count-badge">0</div>
+    </div>
+    <div id="event-log">
+      <table id="evt-table">
+        <thead>
+          <tr>
+            <th style="width:24px">#</th>
+            <th style="width:52px">Time</th>
+            <th>Type</th>
+            <th style="width:44px">dB</th>
+            <th style="width:48px">&#128247;</th>
+          </tr>
+        </thead>
+        <tbody id="evt-tbody">
+          <tr class="evt-placeholder"><td colspan="5">No alert events detected yet</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div><!-- #app -->
+
+<!-- ===== LIGHTBOX ===== -->
+<div id="lightbox" onclick="if(event.target===this)closeLightbox()">
+  <button id="lb-close" onclick="closeLightbox()">&#10005;</button>
+  <img id="lb-img" alt="Floor image">
+</div>
+
+<!-- ===== EXPORT SCREEN ===== -->
+<div id="export-screen" class="hidden"></div>
+
+<script>
+'use strict';
+
+// ─────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────
+const FFT_SIZE        = 2048;
+const DB_FLOOR        = -90;
+const DB_CEILING      = 0;
+const ACCEL_MAX_DISP  = 15;     // m/s² graph Y-scale
+const SAMPLE_INTERVAL = 100;    // ms  →  10 Hz
+const GRAPH_WINDOW    = 300;    // samples shown on live graphs (30 s)
+const COOLDOWN_MS     = 600;    // min gap between alert events
+const CORR_WINDOW_MS  = 500;    // audio/motion correlation
+const BASELINE_N      = 25;     // motion calibration samples
+const MAX_CLIPS       = 20;     // max audio clips per session
+const MAX_IMAGES      = 20;     // max floor images per session
+const AUDIO_SR        = 44100;  // WAV sample rate (matched to AudioContext)
+const RING_SEC        = 2;      // rolling audio buffer length (seconds)
+const PRE_SEC         = 1;      // seconds of audio to capture before event
+const POST_SEC        = 1;      // seconds of audio to capture after event
+
+// ─────────────────────────────────────────────
+// State
+// ─────────────────────────────────────────────
+const state = {
+  lift: '', direction: '',
+  startTime: null, running: false,
+
+  dbSpikeThresh: 15,    // dB rise
+  motionThresh:  0.5,   // m/s² above baseline
+
+  // Audio pipeline
+  audioCtx:   null,
+  analyser:   null,
+  stream:     null,
+  rafId:      null,
+
+  // Rolling audio ring buffer (Float32, mono, fixed-size circular)
+  ringBuf:    null,   // Float32Array, length = sampleRate * RING_SEC
+  ringPos:    0,      // write-head pointer (mod ringBuf.length)
+  ringFilled: 0,      // samples written so far (capped at ringBuf.length)
+  ringReady:  false,  // true once ScriptProcessorNode is running
+  audioNode:  null,   // ScriptProcessorNode
+
+  // Stored clips: [{name, wav: ArrayBuffer, eventIdx}]
+  clips: [],
+
+  // Camera
+  cameraStream:  null,
+  cameraEnabled: false,
+
+  // Captured floor images: [{name, thumbDataUrl, fullDataUrl, eventIdx}]
+  images: [],
+
+  // Detection helpers
+  prevDb: DB_FLOOR, prevDbAt: 0,
+  lastEventAt: 0,
+  recentAudioEvts:  [],
+  recentMotionEvts: [],
+
+  // Motion
+  motionEnabled: false,
+  motionBaseline: null,
+  motionCalibBuf: [],
+  lastMotion: { x: 0, y: 0, z: 0, mag: 0 },
+
+  // Continuous 10 Hz samples
+  samples: [],
+  sampleInterval: null,
+
+  // Alert events
+  events: [],
+
+  // Timer / Wake lock
+  timerInterval: null,
+  wakeLock: null,
+
+  // Canvas pixel caches
+  dbW: 0, dbH: 0,
+  acW: 0, acH: 0,
+
+  // Stats
+  recDb: null, recMag: null,
+  dbStats: null, magStats: null,
+  dbDeltaStats: null, magDeltaStats: null,
+  magBaseline: null,
+  dbExceedPct: null, magExceedPct: null,
+
+  // Persistent blob URLs for export screen (revoked on new session)
+  exportUrls: [],
+};
+
+// One reusable freq buffer for RAF loop
+const freqBuf = new Float32Array(FFT_SIZE / 2);
+
+// ─────────────────────────────────────────────
+// localStorage persistence keys
+// ─────────────────────────────────────────────
+const LS = {
+  LIFT:       'em_lift',
+  DIRECTION:  'em_direction',
+  DB_THRESH:  'em_db_thresh',
+  MOT_THRESH: 'em_mot_thresh',
+  REC_DB:     'em_rec_db',
+  REC_MAG:    'em_rec_mag',
+};
+
+// Save current setup-screen field values to localStorage.
+// Only overwrites lift if the user has typed something (empty = keep last saved).
+function saveSettings() {
+  try {
+    const liftVal = document.getElementById('lift-input').value;
+    if (liftVal) localStorage.setItem(LS.LIFT, liftVal);
+    localStorage.setItem(LS.DIRECTION,  document.getElementById('direction-input').value);
+    localStorage.setItem(LS.DB_THRESH,  document.getElementById('s-db-slider').value);
+    localStorage.setItem(LS.MOT_THRESH, document.getElementById('s-motion-slider').value);
+  } catch (e) { /* storage unavailable — non-critical */ }
+}
+
+// Restore saved settings to the setup screen on load / after new session.
+function loadSettings() {
+  try {
+    const lift      = localStorage.getItem(LS.LIFT);
+    const direction = localStorage.getItem(LS.DIRECTION);
+    const dbThresh  = localStorage.getItem(LS.DB_THRESH);
+    const motThresh = localStorage.getItem(LS.MOT_THRESH);
+    const recDb     = localStorage.getItem(LS.REC_DB);
+    const recMag    = localStorage.getItem(LS.REC_MAG);
+
+    // Lift: show as placeholder only — field stays blank so user must consciously re-enter
+    if (lift) {
+      const el = document.getElementById('lift-input');
+      el.value       = '';
+      el.placeholder = `Last used: ${lift}`;
+    }
+
+    // Direction
+    if (direction) document.getElementById('direction-input').value = direction;
+
+    // dB threshold — set slider + state + display text directly (no saveSettings side-effect)
+    if (dbThresh) {
+      const v = parseInt(dbThresh, 10);
+      document.getElementById('s-db-slider').value = v;
+      state.dbSpikeThresh = v;
+      document.getElementById('s-db-num').textContent = v + ' dB rise';
+    }
+
+    // Motion threshold
+    if (motThresh) {
+      const v = parseInt(motThresh, 10);
+      document.getElementById('s-motion-slider').value = v;
+      state.motionThresh = v / 10;
+      document.getElementById('s-motion-num').textContent =
+        (v / 10).toFixed(1) + ' m/s\u00B2 above baseline';
+    }
+
+    // Recommendations from last completed session
+    if (recDb) {
+      const el = document.getElementById('s-db-rec');
+      if (el) el.textContent = `Last session recommended: ${parseFloat(recDb).toFixed(1)} dB rise`;
+    }
+    if (recMag) {
+      const el = document.getElementById('s-motion-rec');
+      if (el) el.textContent =
+        `Last session recommended: ${parseFloat(recMag).toFixed(2)} m/s\u00B2 above baseline`;
+    }
+  } catch (e) { /* storage unavailable */ }
+}
+
+// Clear all saved settings and restore factory defaults.
+function resetToDefaults() {
+  try { Object.values(LS).forEach(k => localStorage.removeItem(k)); } catch (e) {}
+  const liftEl = document.getElementById('lift-input');
+  liftEl.value = '';
+  liftEl.placeholder = 'e.g. Lift A, Lift B, Car 3\u2026';
+  document.getElementById('direction-input').value = 'Unknown';
+  const dbSlider = document.getElementById('s-db-slider');
+  dbSlider.value = 15;
+  state.dbSpikeThresh = 15;
+  document.getElementById('s-db-num').textContent = '15 dB rise';
+  const motSlider = document.getElementById('s-motion-slider');
+  motSlider.value = 5;
+  state.motionThresh = 0.5;
+  document.getElementById('s-motion-num').textContent = '0.5 m/s\u00B2 above baseline';
+  const dbRec = document.getElementById('s-db-rec');
+  if (dbRec) dbRec.textContent = '';
+  const motRec = document.getElementById('s-motion-rec');
+  if (motRec) motRec.textContent = '';
+}
+
+// ─────────────────────────────────────────────
+// Setup modal slider handlers
+// ─────────────────────────────────────────────
+function onSetupDb(v) {
+  state.dbSpikeThresh = parseInt(v, 10);
+  document.getElementById('s-db-num').textContent = v + ' dB rise';
+  saveSettings();
+}
+function onSetupMotion(v) {
+  state.motionThresh = v / 10;
+  document.getElementById('s-motion-num').textContent =
+    (v / 10).toFixed(1) + ' m/s\u00B2 above baseline';
+  saveSettings();
+}
+
+// ─────────────────────────────────────────────
+// Session start
+// ─────────────────────────────────────────────
+function startSession() {
+  const liftInput = document.getElementById('lift-input').value.trim();
+  let savedLift = null;
+  try { savedLift = localStorage.getItem(LS.LIFT); } catch (e) {}
+  state.lift      = (liftInput || savedLift || 'Lift').replace(/"/g, '');
+  state.direction = document.getElementById('direction-input').value;
+  // Persist the lift name actually used (covers the placeholder-fallback case)
+  try {
+    localStorage.setItem(LS.LIFT,      state.lift);
+    localStorage.setItem(LS.DIRECTION, state.direction);
+  } catch (e) {}
+  state.startTime = new Date();
+  state.samples   = [];
+  state.events    = [];
+  state.clips     = [];
+  state.images    = [];
+
+  document.getElementById('bar-lift').textContent = state.lift;
+  document.getElementById('bar-dir').textContent  = state.direction;
+  document.getElementById('setup-modal').classList.add('hidden');
+  document.getElementById('app').classList.add('visible');
+
+  if (typeof DeviceMotionEvent !== 'undefined' &&
+      typeof DeviceMotionEvent.requestPermission === 'function') {
+    document.getElementById('ios-permission-modal').classList.remove('hidden');
+  } else {
+    attachMotionListener();
+    initAudio();
+  }
+}
+
+async function requestIOSMotion() {
+  document.getElementById('ios-permission-modal').classList.add('hidden');
+  try {
+    const r = await DeviceMotionEvent.requestPermission();
+    if (r === 'granted') attachMotionListener();
+  } catch (e) { console.warn('Motion permission:', e); }
+  initAudio();
+}
+function skipMotion() {
+  document.getElementById('ios-permission-modal').classList.add('hidden');
+  initAudio();
+}
+
+// ─────────────────────────────────────────────
+// Audio initialisation
+// ─────────────────────────────────────────────
+async function initAudio() {  // async kept for getUserMedia await
+  try {
+    state.stream   = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    state.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    state.analyser = state.audioCtx.createAnalyser();
+    state.analyser.fftSize               = FFT_SIZE;
+    state.analyser.smoothingTimeConstant = 0.55;
+
+    const src = state.audioCtx.createMediaStreamSource(state.stream);
+    src.connect(state.analyser);
+
+    // Allocate fixed-size circular ring buffer: RING_SEC × sampleRate samples
+    const sr = state.audioCtx.sampleRate;
+    state.ringBuf    = new Float32Array(Math.ceil(sr * RING_SEC));
+    state.ringPos    = 0;
+    state.ringFilled = 0;
+
+    // Start ScriptProcessorNode — feeds ring buffer continuously
+    startRingBuffer(src, sr);
+
+    state.running = true;
+    startTimer();
+    acquireWakeLock();
+    measureCanvases();
+    rafLoop();
+    setTimeout(startSampler, 300);
+    if (state.cameraEnabled && state.cameraStream) startCameraPreview();
+  } catch (err) {
+    document.getElementById('mic-error').style.display = 'block';
+    console.error('Microphone error:', err);
+  }
+}
+
+// ─────────────────────────────────────────────
+// Rolling audio ring buffer  (ScriptProcessorNode — reliable on all platforms)
+// ─────────────────────────────────────────────
+
+function startRingBuffer(src, sr) {
+  // Buffer size 4096 ≈ 93 ms per callback at 44100 Hz.
+  // MUST connect to destination so onaudioprocess fires on iOS Safari.
+  const spn = state.audioCtx.createScriptProcessor(4096, 1, 1);
+  spn.onaudioprocess = (e) => {
+    // getChannelData returns a live view — copy it before the engine reclaims it
+    const chunk = new Float32Array(e.inputBuffer.getChannelData(0));
+    feedRing(chunk);
+  };
+  src.connect(spn);
+  spn.connect(state.audioCtx.destination);
+  state.audioNode = spn;
+  state.ringReady = true;
+  console.log('[ring] ScriptProcessorNode started, SR =', sr,
+    ', ring length =', state.ringBuf.length, 'samples (',
+    (state.ringBuf.length / sr).toFixed(1), 's)');
+}
+
+// Write chunk into circular ring buffer — runs even after state.running = false
+// so that post-roll audio keeps accumulating until AudioContext is closed.
+function feedRing(chunk) {
+  const ring = state.ringBuf;
+  if (!ring) return;
+  const len = ring.length;
+  let   pos = state.ringPos;
+  for (let i = 0; i < chunk.length; i++) {
+    ring[pos] = chunk[i];
+    pos = (pos + 1) % len;
+  }
+  state.ringPos    = pos;
+  state.ringFilled = Math.min(state.ringFilled + chunk.length, len);
+}
+
+// Read the most-recent `n` samples from the ring buffer into a new Float32Array.
+// Safe to call at any time; returns silence (zeros) for samples before the buffer filled.
+function readRingSnapshot(n) {
+  const ring    = state.ringBuf;
+  const ringLen = ring.length;
+  const out     = new Float32Array(n);           // initialised to zero
+  // How many valid samples do we actually have?
+  const available = Math.min(n, state.ringFilled);
+  const startPos  = ((state.ringPos - available) % ringLen + ringLen) % ringLen;
+  const destOff   = n - available;               // prepend silence if buffer not full yet
+  for (let i = 0; i < available; i++) {
+    out[destOff + i] = ring[(startPos + i) % ringLen];
+  }
+  return out;
+}
+
+// ─────────────────────────────────────────────
+// Audio clip capture  (timeout-based post-roll — no fragile stream injection)
+// ─────────────────────────────────────────────
+
+function triggerClipCapture(eventIdx, eventType, elapsedSec) {
+  if (!state.ringReady || !state.ringBuf) {
+    console.warn('[clip] ring not ready — skipping capture');
+    return;
+  }
+  if (state.clips.length >= MAX_CLIPS) {
+    console.log('[clip] MAX_CLIPS reached, not capturing');
+    return;
+  }
+
+  const sr     = state.audioCtx.sampleRate;
+  const preLen = Math.ceil(sr * PRE_SEC);
+
+  // Snapshot pre-roll RIGHT NOW (before the ring overwrites it)
+  const prePCM = readRingSnapshot(preLen);
+
+  console.log(
+    `[clip #${eventIdx + 1}] alert fired — ring filled: ${state.ringFilled} samples` +
+    ` (${(state.ringFilled / sr).toFixed(2)}s), SR: ${sr}` +
+    `, pre-roll snapshot: ${prePCM.length} samples, starting ${POST_SEC}s post-roll`
+  );
+
+  // After POST_SEC the ring will contain POST_SEC worth of fresh audio at ringPos.
+  setTimeout(() => {
+    const postLen = Math.ceil(sr * POST_SEC);
+    const postPCM = readRingSnapshot(postLen);
+
+    // Combine pre + post
+    const pcm = new Float32Array(prePCM.length + postPCM.length);
+    pcm.set(prePCM, 0);
+    pcm.set(postPCM, prePCM.length);
+
+    const wav = encodeWAV(pcm, sr);
+    console.log(
+      `[clip #${eventIdx + 1}] WAV encoded: ${wav.byteLength} bytes` +
+      ` (expected ≈ ${44 + pcm.length * 2})`
+    );
+
+    const mins     = String(Math.floor(elapsedSec / 60)).padStart(2, '0');
+    const secs     = String(elapsedSec % 60).padStart(2, '0');
+    const typeSafe = eventType.replace(/[^a-z0-9]+/gi, '_')
+                              .replace(/^_|_$/g, '').slice(0, 30);
+    const name = `event_${String(eventIdx + 1).padStart(3, '0')}_${typeSafe}_${mins}m${secs}s.wav`;
+
+    state.clips.push({ name, wav, eventIdx });
+    console.log(`[clip #${eventIdx + 1}] stored as "${name}". Total clips: ${state.clips.length}`);
+    updateClipCounter();
+
+    // Update the event's clipName now that it is known
+    const evt = state.events[eventIdx];
+    if (evt) evt.clipName = name;
+  }, POST_SEC * 1000);
+}
+
+// ─────────────────────────────────────────────
+// WAV encoder (pure JS, no library)
+// ─────────────────────────────────────────────
+function encodeWAV(samples, sampleRate) {
+  const numCh      = 1;
+  const bitDepth   = 16;
+  const byteRate   = sampleRate * numCh * bitDepth / 8;
+  const blockAlign = numCh * bitDepth / 8;
+  const dataLen    = samples.length * blockAlign;
+  const buf        = new ArrayBuffer(44 + dataLen);
+  const view       = new DataView(buf);
+
+  const writeStr = (off, s) => { for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)); };
+  writeStr(0,  'RIFF');
+  view.setUint32(4,  36 + dataLen, true);
+  writeStr(8,  'WAVE');
+  writeStr(12, 'fmt ');
+  view.setUint32(16, 16, true);          // PCM chunk size
+  view.setUint16(20,  1, true);          // PCM format
+  view.setUint16(22, numCh, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, byteRate, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, bitDepth, true);
+  writeStr(36, 'data');
+  view.setUint32(40, dataLen, true);
+
+  // Convert float32 → int16
+  let off = 44;
+  for (let i = 0; i < samples.length; i++) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+    off += 2;
+  }
+  return buf; // ArrayBuffer
+}
+
+// ─────────────────────────────────────────────
+// Camera
+// ─────────────────────────────────────────────
+async function requestCameraPermission() {
+  const btn = document.getElementById('btn-camera');
+  btn.textContent = '📷 Requesting…';
+  btn.disabled = true;
+  try {
+    state.cameraStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 960 } },
+      audio: false,
+    });
+    state.cameraEnabled = true;
+    btn.innerHTML = '<span>📷</span><span>Camera Active ✓ — floor images will be captured at each alert</span>';
+    btn.classList.add('ready');
+  } catch (e) {
+    console.warn('[camera] permission denied or unavailable:', e);
+    btn.innerHTML = '<span>📷</span><span>Camera unavailable — monitoring will continue without images</span>';
+    btn.classList.add('denied');
+    btn.disabled = false;
+  }
+}
+
+function startCameraPreview() {
+  const video = document.getElementById('cam-video');
+  video.srcObject = state.cameraStream;
+  document.getElementById('cam-tile').style.display = 'block';
+}
+
+function captureImage(eventIdx, type, elapsedSec) {
+  if (!state.cameraEnabled || !state.cameraStream) return;
+  if (state.images.length >= MAX_IMAGES) return;
+
+  const video = document.getElementById('cam-video');
+  if (!video || video.readyState < 2 || !video.videoWidth) return;
+
+  const mins     = String(Math.floor(elapsedSec / 60)).padStart(2, '0');
+  const secs     = String(elapsedSec % 60).padStart(2, '0');
+  const typeSafe = type.replace(/[^a-z0-9]+/gi, '_').replace(/^_|_$/g, '').slice(0, 30);
+  const name     = `event_${String(eventIdx + 1).padStart(3, '0')}_${typeSafe}_${mins}m${secs}s.jpg`;
+
+  // Thumbnail: 240×180 JPEG at 50% — target < 15 KB
+  const tc = document.createElement('canvas');
+  tc.width = 240; tc.height = 180;
+  tc.getContext('2d').drawImage(video, 0, 0, 240, 180);
+  const thumbDataUrl = tc.toDataURL('image/jpeg', 0.50);
+
+  // Full-res: constrain to 800×600, JPEG at 70% — target < 80 KB
+  const MAX_W = 800, MAX_H = 600;
+  const srcW = video.videoWidth, srcH = video.videoHeight;
+  const scale = Math.min(1, MAX_W / srcW, MAX_H / srcH);
+  const fw = Math.round(srcW * scale), fh = Math.round(srcH * scale);
+  const fc = document.createElement('canvas');
+  fc.width = fw; fc.height = fh;
+  fc.getContext('2d').drawImage(video, 0, 0, fw, fh);
+  const fullDataUrl = fc.toDataURL('image/jpeg', 0.70);
+
+  const thumbKB = (thumbDataUrl.length * 0.75 / 1024).toFixed(1);
+  const fullKB  = (fullDataUrl.length  * 0.75 / 1024).toFixed(1);
+  console.log(`[cam] "${name}" thumb 240×180 ~${thumbKB}KB  full ${fw}×${fh} ~${fullKB}KB`);
+
+  state.images.push({ name, thumbDataUrl, fullDataUrl, eventIdx });
+
+  const evt = state.events[eventIdx];
+  if (evt) evt.imageName = name;
+
+  // Update the live event table row's image cell
+  const cell = document.getElementById(`evt-img-${eventIdx}`);
+  if (cell) {
+    cell.innerHTML = `<img src="${thumbDataUrl}" class="evt-thumb" onclick="openLightbox(${eventIdx})" alt="floor">`;
+  }
+  updateClipCounter();
+}
+
+// ─────────────────────────────────────────────
+// DeviceMotion
+// ─────────────────────────────────────────────
+function attachMotionListener() {
+  state.motionEnabled = true;
+  window.addEventListener('devicemotion', onDeviceMotion, { passive: true });
+}
+
+function onDeviceMotion(evt) {
+  if (!state.running) return;
+  const a = evt.accelerationIncludingGravity || evt.acceleration;
+  if (!a) return;
+
+  const x = a.x || 0, y = a.y || 0, z = a.z || 0;
+  const mag = Math.sqrt(x*x + y*y + z*z);
+  state.lastMotion = { x, y, z, mag };
+
+  // Baseline calibration
+  if (state.motionBaseline === null) {
+    state.motionCalibBuf.push(mag);
+    if (state.motionCalibBuf.length >= BASELINE_N) {
+      state.motionBaseline =
+        state.motionCalibBuf.reduce((a, b) => a + b, 0) / state.motionCalibBuf.length;
+    }
+    return;
+  }
+
+  if (mag > state.motionBaseline + state.motionThresh) {
+    const now    = Date.now();
+    const paired = state.recentAudioEvts.findIndex(e => now - e.time < CORR_WINDOW_MS);
+    if (paired !== -1) {
+      state.recentAudioEvts.splice(paired, 1);
+      emitEvent('Confirmed: Knock+Vibration', state.prevDb, x, y, z, mag);
+    } else {
+      state.recentMotionEvts.push({ time: now });
+      purgeOld(state.recentMotionEvts, 1500);
+      emitEvent('Motion: Vibration', state.prevDb, x, y, z, mag);
+    }
+  }
+}
+
+// ─────────────────────────────────────────────
+// RAF loop
+// ─────────────────────────────────────────────
+function rafLoop() {
+  if (!state.running) return;
+  state.rafId = requestAnimationFrame(rafLoop);
+
+  state.analyser.getFloatFrequencyData(freqBuf);
+  let peak = DB_FLOOR;
+  for (let i = 0; i < freqBuf.length; i++) {
+    if (freqBuf[i] > peak) peak = freqBuf[i];
+  }
+  const db = Math.max(DB_FLOOR, Math.min(DB_CEILING, peak));
+
+  updateDbDisplay(db);
+  detectAudioSpike(db, freqBuf);
+  drawDbGraph();
+  drawAccelGraph();
+
+  state.prevDb   = db;
+  state.prevDbAt = Date.now();
+}
+
+// ─────────────────────────────────────────────
+// dB display
+// ─────────────────────────────────────────────
+function updateDbDisplay(db) {
+  const el = document.getElementById('db-value');
+  el.textContent = db.toFixed(1) + ' dB';
+  el.className   = db > -20 ? 'danger' : db > -45 ? 'warn' : '';
+  const pct = ((db - DB_FLOOR) / (DB_CEILING - DB_FLOOR)) * 100;
+  document.getElementById('db-bar-fill').style.width = Math.max(0, pct) + '%';
+}
+
+// ─────────────────────────────────────────────
+// Audio spike + FFT classification
+// ─────────────────────────────────────────────
+function detectAudioSpike(db, freqData) {
+  const now  = Date.now();
+  const rise = db - state.prevDb;
+  const dt   = now - state.prevDbAt;
+
+  if (rise >= state.dbSpikeThresh && dt <= 120) {
+    const binHz = state.audioCtx.sampleRate / FFT_SIZE;
+    const lowE  = bandEnergy(freqData, 20,   200,  binHz);
+    const midE  = bandEnergy(freqData, 200,  2000, binHz);
+    const highE = bandEnergy(freqData, 2000, 8000, binHz);
+
+    let type;
+    if      (midE > lowE * 1.8 && midE > highE * 0.5) type = 'Knock (200–2000 Hz transient)';
+    else if (lowE >= midE * 1.5)                       type = 'Rumble (20–200 Hz low-freq)';
+    else if (highE > midE)                             type = 'Sharp Transient (>2 kHz)';
+    else                                               type = 'Audio Spike';
+
+    const { x, y, z, mag } = state.lastMotion;
+    const paired = state.recentMotionEvts.findIndex(e => now - e.time < CORR_WINDOW_MS);
+    if (paired !== -1) {
+      state.recentMotionEvts.splice(paired, 1);
+      emitEvent('Confirmed: Knock+Vibration', db, x, y, z, mag);
+    } else {
+      state.recentAudioEvts.push({ time: now });
+      purgeOld(state.recentAudioEvts, 1500);
+      emitEvent(type, db, x, y, z, mag);
+    }
+  }
+}
+
+function bandEnergy(fd, fLo, fHi, binHz) {
+  const lo = Math.max(1, Math.round(fLo / binHz));
+  const hi = Math.min(fd.length - 1, Math.round(fHi / binHz));
+  let e = 0;
+  for (let i = lo; i <= hi; i++) e += Math.pow(10, fd[i] / 10);
+  return e;
+}
+function purgeOld(arr, ms) {
+  const cut = Date.now() - ms;
+  for (let i = arr.length - 1; i >= 0; i--) {
+    if (arr[i].time < cut) arr.splice(i, 1);
+  }
+}
+
+// ─────────────────────────────────────────────
+// Event emission
+// ─────────────────────────────────────────────
+function emitEvent(type, db, x, y, z, mag) {
+  const now = Date.now();
+  if (now - state.lastEventAt < COOLDOWN_MS) return;
+  state.lastEventAt = now;
+
+  const elapsedSec = Math.round((now - state.startTime.getTime()) / 1000);
+  const evt = {
+    timestamp: new Date().toISOString(),
+    lift: state.lift, direction: state.direction,
+    type, db: parseFloat(db.toFixed(2)),
+    x: parseFloat(x.toFixed(4)), y: parseFloat(y.toFixed(4)),
+    z: parseFloat(z.toFixed(4)), mag: parseFloat(mag.toFixed(4)),
+    elapsedSec,
+    clipName: '',
+    imageName: '',
+  };
+  const eventIdx = state.events.length;
+  state.events.push(evt);
+
+  // Capture floor image immediately (synchronous frame grab)
+  captureImage(eventIdx, type, elapsedSec);
+
+  // Capture audio clip if under limit
+  if (state.ringReady && state.clips.length < MAX_CLIPS) {
+    evt.clipName = '(capturing…)';
+    triggerClipCapture(eventIdx, type, elapsedSec);
+  } else if (state.clips.length >= MAX_CLIPS) {
+    evt.clipName = '(clip limit reached)';
+  }
+
+  markCurrentSampleAlert(type);
+  renderEventItem(evt, eventIdx);
+  flashOverlay();
+  document.getElementById('alert-count').textContent = state.events.length;
+}
+
+function markCurrentSampleAlert(type) {
+  if (state.samples.length === 0) return;
+  const last = state.samples[state.samples.length - 1];
+  if (!last.alert || type.includes('Confirmed')) {
+    last.alert     = true;
+    last.alertType = type;
+  }
+}
+
+function renderEventItem(evt, idx) {
+  const tbody = document.getElementById('evt-tbody');
+  const ph = tbody.querySelector('.evt-placeholder');
+  if (ph) ph.remove();
+
+  const typeCls = evt.type.includes('Confirmed') ? 'evt-type-confirm'
+                : evt.type.includes('Motion')    ? 'evt-type-motion'
+                : evt.type.includes('Rumble')    ? 'evt-type-rumble'
+                : evt.type.includes('Knock')     ? 'evt-type-knock'
+                : 'evt-type-spike';
+
+  const mins = String(Math.floor(evt.elapsedSec / 60)).padStart(2, '0');
+  const secs = String(evt.elapsedSec % 60).padStart(2, '0');
+
+  const tr = document.createElement('tr');
+  tr.id = `evt-row-${idx}`;
+  tr.innerHTML =
+    `<td>${idx + 1}</td>` +
+    `<td>${mins}m${secs}s</td>` +
+    `<td class="${typeCls}" style="max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(evt.type)}">${esc(evt.type)}</td>` +
+    `<td>${evt.db.toFixed(1)}</td>` +
+    `<td id="evt-img-${idx}">—</td>`;
+  tbody.appendChild(tr);
+
+  // Auto-scroll newest into view
+  const log = document.getElementById('event-log');
+  log.scrollTop = log.scrollHeight;
+
+  document.getElementById('event-count-badge').textContent = state.events.length;
+}
+
+function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// ─────────────────────────────────────────────
+// 10 Hz continuous sampler
+// ─────────────────────────────────────────────
+function startSampler() {
+  state.sampleInterval = setInterval(() => {
+    if (!state.running) return;
+    const elapsedSec = (Date.now() - state.startTime.getTime()) / 1000;
+    state.samples.push({
+      ts: new Date().toISOString(),
+      elapsedSec: parseFloat(elapsedSec.toFixed(2)),
+      db:  state.prevDb,
+      x:   state.lastMotion.x,
+      y:   state.lastMotion.y,
+      z:   state.lastMotion.z,
+      mag: state.lastMotion.mag,
+      alert: false, alertType: '',
+    });
+    document.getElementById('sample-count').textContent = state.samples.length;
+    updateBufferStatus();
+  }, SAMPLE_INTERVAL);
+}
+
+function updateBufferStatus() {
+  const sr     = state.audioCtx?.sampleRate || 44100;
+  const filled = state.ringFilled || 0;
+  const total  = state.ringBuf?.length || Math.ceil(sr * RING_SEC);
+  const filledS = (filled / sr).toFixed(1);
+  const totalS  = (total  / sr).toFixed(1);
+  const el = document.getElementById('buffer-status');
+  if (el) el.textContent = `Ring: ${filledS}s / ${totalS}s`;
+}
+
+function updateClipCounter() {
+  const el = document.getElementById('clip-counter');
+  if (!el) return;
+  const parts = [`Clips: ${state.clips.length} / ${MAX_CLIPS}`];
+  if (state.cameraEnabled) parts.push(`Images: ${state.images.length} / ${MAX_IMAGES}`);
+  el.textContent = parts.join(' · ');
+}
+
+function stopSampler() {
+  if (state.sampleInterval) { clearInterval(state.sampleInterval); state.sampleInterval = null; }
+}
+
+// ─────────────────────────────────────────────
+// Flash overlay
+// ─────────────────────────────────────────────
+let flashTimer = null;
+function flashOverlay() {
+  const ov = document.getElementById('flash-overlay');
+  ov.classList.add('active');
+  if (flashTimer) clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => ov.classList.remove('active'), 160);
+}
+
+// ─────────────────────────────────────────────
+// Canvas drawing
+// ─────────────────────────────────────────────
+function measureCanvases() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  [['db-graph-canvas','db'], ['accel-canvas','ac']].forEach(([id, key]) => {
+    const c = document.getElementById(id);
+    state[key+'W'] = c.offsetWidth  * dpr;
+    state[key+'H'] = c.offsetHeight * dpr;
+    c.width  = state[key+'W'];
+    c.height = state[key+'H'];
+  });
+}
+window.addEventListener('resize', measureCanvases, { passive: true });
+
+// Right-align: sample i of n in a GRAPH_WINDOW-wide display
+function sampleX(i, n, W) {
+  return ((GRAPH_WINDOW - n + i) / (GRAPH_WINDOW - 1)) * W;
+}
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+function dbToY(db, H) {
+  return H - clamp(((db - DB_FLOOR) / (DB_CEILING - DB_FLOOR)) * H, 0, H);
+}
+
+// Elapsed-time X-axis tick interval that avoids label overlap
+function tickInterval(totalSec) {
+  if (totalSec <=  30) return 5;
+  if (totalSec <=  60) return 10;
+  if (totalSec <= 120) return 15;
+  if (totalSec <= 300) return 30;
+  return 60;
+}
+
+// Draw time ticks on an existing canvas context for live scrolling graphs
+// visibleSec = seconds represented by the full canvas width
+// rightEdgeSec = elapsed seconds at the right edge (= current elapsed time)
+function drawTimeTicks(ctx, W, H, rightEdgeSec, visibleSec, textColor) {
+  const interval = tickInterval(rightEdgeSec);
+  ctx.fillStyle   = textColor || '#333';
+  ctx.font        = `${Math.max(10, Math.round(H * 0.16))}px monospace`;
+  ctx.textAlign   = 'center';
+  ctx.strokeStyle = '#1e1e1e';
+  ctx.lineWidth   = 1;
+
+  // First tick visible on screen
+  const firstTick = Math.ceil((rightEdgeSec - visibleSec) / interval) * interval;
+  for (let t = firstTick; t <= rightEdgeSec; t += interval) {
+    const frac = (t - (rightEdgeSec - visibleSec)) / visibleSec;
+    const x    = frac * W;
+    ctx.beginPath(); ctx.moveTo(x, H - 14); ctx.lineTo(x, H); ctx.stroke();
+    ctx.fillText(t + 's', x, H - 2);
+  }
+}
+
+function drawDbGraph() {
+  const canvas = document.getElementById('db-graph-canvas');
+  const ctx    = canvas.getContext('2d');
+  const W = state.dbW, H = state.dbH;
+  if (!W || !H) return;
+
+  ctx.fillStyle = '#080808';
+  ctx.fillRect(0, 0, W, H);
+
+  // dBFS grid
+  ctx.lineWidth = 1; ctx.strokeStyle = '#1e1e1e';
+  [-90, -60, -30, 0].forEach(db => {
+    const y = dbToY(db, H);
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  });
+
+  const win = state.samples.slice(-GRAPH_WINDOW);
+  const n   = win.length;
+  const elapsed = n > 0 ? win[n - 1].elapsedSec : 0;
+  const visSec  = GRAPH_WINDOW * (SAMPLE_INTERVAL / 1000);  // 30 s
+
+  if (n >= 2) {
+    // Alert markers
+    ctx.lineWidth = 2;
+    win.forEach((s, i) => {
+      if (!s.alert) return;
+      const x = sampleX(i, n, W);
+      ctx.strokeStyle = s.alertType.includes('Confirmed')
+        ? 'rgba(229,62,62,0.9)' : 'rgba(229,62,62,0.55)';
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H - 16); ctx.stroke();
+    });
+
+    // dB line
+    ctx.strokeStyle = '#00e676'; ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    win.forEach((s, i) => {
+      const x = sampleX(i, n, W);
+      const y = dbToY(s.db, H - 16);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  }
+
+  drawTimeTicks(ctx, W, H, elapsed, visSec, '#2a2a2a');
+}
+
+function drawAccelGraph() {
+  const canvas = document.getElementById('accel-canvas');
+  const ctx    = canvas.getContext('2d');
+  const W = state.acW, H = state.acH;
+  if (!W || !H) return;
+
+  ctx.fillStyle = '#080808';
+  ctx.fillRect(0, 0, W, H);
+
+  const win = state.samples.slice(-GRAPH_WINDOW);
+  const n   = win.length;
+  const elapsed = n > 0 ? win[n - 1].elapsedSec : 0;
+  const visSec  = GRAPH_WINDOW * (SAMPLE_INTERVAL / 1000);
+
+  // Auto-scale Y axis based on max absolute value across X, Y, Z and mag
+  let maxVal = 1;
+  if (n > 0) {
+    win.forEach(s => {
+      maxVal = Math.max(maxVal, Math.abs(s.x), Math.abs(s.y), Math.abs(s.z), s.mag);
+    });
+    maxVal *= 1.1;
+  }
+
+  const halfH = (H - 16) / 2;
+
+  // Zero line
+  ctx.strokeStyle = '#1e1e1e'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, halfH); ctx.lineTo(W, halfH); ctx.stroke();
+
+  if (n >= 2) {
+    // Alert markers
+    ctx.lineWidth = 2;
+    win.forEach((s, i) => {
+      if (!s.alert) return;
+      const x = sampleX(i, n, W);
+      ctx.strokeStyle = s.alertType.includes('Confirmed')
+        ? 'rgba(229,62,62,0.9)' : 'rgba(229,62,62,0.55)';
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H - 16); ctx.stroke();
+    });
+
+    const drawLine = (key, color, lw) => {
+      ctx.strokeStyle = color; ctx.lineWidth = lw || 1.5;
+      ctx.beginPath();
+      win.forEach((s, i) => {
+        const x = sampleX(i, n, W);
+        const y = halfH - clamp((s[key] / maxVal) * halfH * 0.92, -halfH, halfH);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+    };
+    drawLine('x',   '#e53e3e', 1.5);
+    drawLine('y',   '#00e676', 1.5);
+    drawLine('z',   '#3182ce', 1.5);
+    drawLine('mag', '#ff8c00', 2.5);
+  }
+
+  drawTimeTicks(ctx, W, H, elapsed, visSec, '#2a2a2a');
+}
+
+// ─────────────────────────────────────────────
+// Timer
+// ─────────────────────────────────────────────
+function startTimer() {
+  const el = document.getElementById('timer');
+  state.timerInterval = setInterval(() => {
+    if (!state.startTime) return;
+    const s = Math.floor((Date.now() - state.startTime) / 1000);
+    el.textContent = pad2(Math.floor(s / 60)) + ':' + pad2(s % 60);
+  }, 500);
+}
+function pad2(n) { return String(n).padStart(2, '0'); }
+
+// ─────────────────────────────────────────────
+// Wake Lock
+// ─────────────────────────────────────────────
+async function acquireWakeLock() {
+  if ('wakeLock' in navigator) {
+    try { state.wakeLock = await navigator.wakeLock.request('screen'); }
+    catch (e) { /* non-critical */ }
+  }
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && state.running) acquireWakeLock();
+});
+
+// ─────────────────────────────────────────────
+// Statistics
+// ─────────────────────────────────────────────
+function calcStats(arr) {
+  const n = arr.length;
+  if (n === 0) return { min: 0, max: 0, mean: 0, std: 0, n: 0 };
+  let min = arr[0], max = arr[0], sum = 0;
+  for (const v of arr) { if (v < min) min = v; if (v > max) max = v; sum += v; }
+  const mean = sum / n;
+  let   vari = 0;
+  for (const v of arr) vari += (v - mean) ** 2;
+  return { min, max, mean, std: Math.sqrt(vari / n), n };
+}
+
+// ─────────────────────────────────────────────
+// Stop & Export
+// ─────────────────────────────────────────────
+function stopAndExport() {
+  if (!state.running) return;
+  state.running = false;
+
+  // Stop everything that doesn't affect the audio pipeline
+  cancelAnimationFrame(state.rafId);
+  stopSampler();
+  clearInterval(state.timerInterval);
+  if (state.wakeLock) { state.wakeLock.release(); state.wakeLock = null; }
+  window.removeEventListener('devicemotion', onDeviceMotion);
+
+  // NOTE: AudioContext and stream are intentionally left open here.
+  // The ring buffer must keep filling for POST_SEC seconds so that
+  // any in-flight triggerClipCapture() timeouts can read their post-roll.
+  // They will be closed in finishExport() after the wait.
+
+  // Stop camera stream (images already captured; stream no longer needed)
+  if (state.cameraStream) {
+    state.cameraStream.getTracks().forEach(t => t.stop());
+    // Don't null state.cameraStream here — we still need state.cameraEnabled flag
+  }
+  document.getElementById('cam-tile').style.display = 'none';
+
+  document.getElementById('rec-dot').style.display = 'none';
+  const btn = document.getElementById('btn-stop');
+  btn.disabled    = true;
+  btn.textContent = 'Finalising clips…';
+
+  // Wait for the longest possible post-roll to complete (POST_SEC) plus margin
+  const waitMs = POST_SEC * 1000 + 600;
+  console.log(`[stop] waiting ${waitMs}ms for post-roll clips to complete…`);
+  setTimeout(() => finishExport(btn), waitMs);
+}
+
+async function finishExport(btn) {
+  if (state.audioCtx) { state.audioCtx.close(); state.audioCtx = null; }
+  if (state.stream)   { state.stream.getTracks().forEach(t => t.stop()); state.stream = null; }
+
+  console.log(`[export] ${state.clips.length} clip(s), ${state.images.length} image(s), ${state.events.length} event(s)`);
+
+  state.clips.forEach(c => {
+    const evt = state.events[c.eventIdx];
+    if (evt && evt.clipName !== c.name) evt.clipName = c.name;
+  });
+
+  computeRecommendations();
+
+  if (state.samples.length === 0) { btn.textContent = 'No data'; return; }
+
+  const endTime = new Date();
+  const slug    = buildSlug(endTime);
+
+  try {
+    btn.textContent = 'Building files…';
+
+    showExportProgress('Building PDF report…');
+    await tick();
+    const pdfBlob = buildPDF(slug, endTime);
+
+    showExportProgress('Building interactive HTML report…');
+    await tick();
+    const htmlStr  = buildHTML(slug, endTime);
+    const htmlBlob = new Blob([htmlStr], { type: 'text/html;charset=utf-8' });
+
+    showExportProgress('Building CSV data…');
+    await tick();
+    const csvStr  = buildCSV();
+    const csvBlob = new Blob([csvStr], { type: 'text/csv' });
+
+    showExportProgress('Compressing floor images…');
+    await tick();
+    // Convert full-res dataURLs to ArrayBuffers for ZIP
+    const imageBuffers = state.images.map(img => ({
+      name: img.name,
+      buf:  dataURLtoArrayBuffer(img.fullDataUrl),
+    }));
+
+    showExportProgress('Assembling ZIP archive…');
+    await tick();
+    const zip    = new JSZip();
+    zip.file(slug + '_report.pdf',      pdfBlob);
+    zip.file(slug + '_interactive.html', htmlStr);
+    zip.file(slug + '_data.csv',         csvStr);
+    const media = zip.folder('media');
+    state.clips.forEach(clip => media.file(clip.name, clip.wav));
+    imageBuffers.forEach(ib => media.file(ib.name, ib.buf));
+
+    showExportProgress('Compressing… 0%');
+    const zipBlob = await zip.generateAsync(
+      { type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } },
+      meta => showExportProgress(`Compressing… ${Math.round(meta.percent)}%`)
+    );
+
+    showExportProgress('Export ready!');
+    await tick();
+    hideExportProgress();
+    renderExportScreen(slug, endTime, pdfBlob, htmlBlob, csvBlob, zipBlob);
+  } catch (e) {
+    console.error('Export error:', e);
+    hideExportProgress();
+    btn.textContent = 'Export error — see console';
+  }
+}
+
+function buildSlug(d) {
+  return state.lift.replace(/\s+/g, '') + '_' + state.direction + '_' +
+         d.toISOString().slice(0, 10) + '_' +
+         d.toTimeString().slice(0, 5).replace(':', '-');
+}
+
+// ─────────────────────────────────────────────
+// Recommendations  (delta-based, matches setup screen units)
+// ─────────────────────────────────────────────
+function computeRecommendations() {
+  const samples = state.samples;
+
+  // Absolute stats (for PDF summary table)
+  state.dbStats  = calcStats(samples.map(s => s.db));
+  state.magStats = calcStats(samples.map(s => s.mag));
+
+  // ── dB spike threshold: positive consecutive deltas ──────────
+  const posDbDeltas = [];
+  for (let i = 1; i < samples.length; i++) {
+    const d = samples[i].db - samples[i - 1].db;
+    if (d > 0) posDbDeltas.push(d);
+  }
+  state.dbDeltaStats = calcStats(posDbDeltas);
+  state.recDb = posDbDeltas.length > 0
+    ? state.dbDeltaStats.mean + 2 * state.dbDeltaStats.std
+    : null;
+  state.dbExceedPct = (posDbDeltas.length > 0 && state.recDb != null)
+    ? posDbDeltas.filter(d => d >= state.recDb).length / posDbDeltas.length * 100
+    : null;
+
+  // ── Mag threshold: positive deltas above median baseline ─────
+  const sortedMags = samples.map(s => s.mag).slice().sort((a, b) => a - b);
+  const mid = Math.floor(sortedMags.length / 2);
+  state.magBaseline = sortedMags.length % 2 === 0
+    ? (sortedMags[mid - 1] + sortedMags[mid]) / 2
+    : sortedMags[mid];
+
+  const posMagDeltas = samples.map(s => s.mag - state.magBaseline).filter(d => d > 0);
+  state.magDeltaStats = calcStats(posMagDeltas);
+  state.recMag = posMagDeltas.length > 0
+    ? state.magDeltaStats.mean + 2 * state.magDeltaStats.std
+    : null;
+  state.magExceedPct = (posMagDeltas.length > 0 && state.recMag != null)
+    ? posMagDeltas.filter(d => d >= state.recMag).length / posMagDeltas.length * 100
+    : null;
+
+  // Persist recommendations so they appear on the next session's setup screen
+  try {
+    if (state.recDb  != null) localStorage.setItem(LS.REC_DB,  state.recDb.toFixed(4));
+    if (state.recMag != null) localStorage.setItem(LS.REC_MAG, state.recMag.toFixed(4));
+  } catch (e) {}
+}
+
+// ─────────────────────────────────────────────
+// Export screen — render & new-session logic
+// ─────────────────────────────────────────────
+function renderExportScreen(slug, endTime, pdfBlob, htmlBlob, csvBlob, zipBlob) {
+  // Create persistent blob URLs — kept alive until startNewSession()
+  const pdfUrl  = URL.createObjectURL(pdfBlob);
+  const htmlUrl = URL.createObjectURL(htmlBlob);
+  const csvUrl  = URL.createObjectURL(csvBlob);
+  const zipUrl  = URL.createObjectURL(zipBlob);
+  state.exportUrls = [pdfUrl, htmlUrl, csvUrl, zipUrl];
+
+  // Per-clip persistent URLs
+  const clipEntries = state.clips.map(clip => {
+    const url = URL.createObjectURL(new Blob([clip.wav], { type: 'audio/wav' }));
+    state.exportUrls.push(url);
+    return { url, clip };
+  });
+
+  // Per-image persistent URLs (full resolution)
+  const imgEntries = state.images.map(img => {
+    const blob = dataURLtoBlob(img.fullDataUrl);
+    const url  = URL.createObjectURL(blob);
+    state.exportUrls.push(url);
+    return { url, img };
+  });
+
+  const fmtSize = b => b < 1048576
+    ? (b / 1024).toFixed(1) + ' KB'
+    : (b / 1048576).toFixed(2) + ' MB';
+
+  const duration = Math.floor((endTime - state.startTime) / 1000);
+  const durStr   = Math.floor(duration / 60) + 'm ' + (duration % 60) + 's';
+
+  // Recommended thresholds block (delta-based, matches setup screen units)
+  const hasRec = state.recDb != null && state.recMag != null;
+  const dbExcStr  = state.dbExceedPct  != null ? `largest ~${state.dbExceedPct.toFixed(0)}% of sudden rises` : '';
+  const magExcStr = state.magExceedPct != null ? `largest ~${state.magExceedPct.toFixed(0)}% of magnitude rises` : '';
+  const recHtml = hasRec ? `
+    <div class="exp-rec-panel">
+      <div style="font-size:0.75rem;font-weight:700;color:#63b3ed;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.08em">Recommended Thresholds for Next Session</div>
+      <div class="exp-rec-row" style="align-items:flex-start;flex-direction:column;gap:4px;margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;width:100%;align-items:baseline">
+          <span class="exp-rec-lbl">dB Spike Threshold</span>
+          <span class="exp-rec-val">${state.recDb.toFixed(1)} dB rise</span>
+        </div>
+        <div style="font-size:0.7rem;color:#718096">Would have flagged the ${dbExcStr} this session.</div>
+        <div style="font-size:0.7rem;color:#4a5568;font-style:italic">Enter as "dB Spike Threshold" on the next session setup screen.</div>
+      </div>
+      <div class="exp-rec-row" style="align-items:flex-start;flex-direction:column;gap:4px;border-bottom:none;margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;width:100%;align-items:baseline">
+          <span class="exp-rec-lbl">Motion Magnitude Threshold</span>
+          <span class="exp-rec-val">${state.recMag.toFixed(2)} m/s² above baseline</span>
+        </div>
+        <div style="font-size:0.7rem;color:#718096">Would have flagged the ${magExcStr} this session.</div>
+        <div style="font-size:0.7rem;color:#4a5568;font-style:italic">Enter as "Motion Magnitude Threshold" on the next session setup screen.</div>
+      </div>
+      <div style="font-size:0.68rem;color:#4a5568;border-top:1px solid #1a2d3d;padding-top:8px">These recommendations flag only the most significant excursions from this ride. Adjust lower to be more sensitive, higher to reduce false alerts.</div>
+    </div>` : '';
+
+  // Audio clips block
+  const clipsHtml = clipEntries.length === 0
+    ? `<p class="exp-no-clips">No audio alert clips recorded this session.</p>`
+    : clipEntries.map(({ url, clip }) => {
+        const evt  = state.events[clip.eventIdx];
+        const sec  = evt?.elapsedSec ?? 0;
+        const mins = String(Math.floor(sec / 60)).padStart(2, '0');
+        const secs = String(sec % 60).padStart(2, '0');
+        const num  = clip.eventIdx + 1;
+        const label = `Clip ${num} — ${esc(evt?.type ?? 'Alert')} at ${mins}m${secs}s`;
+        return `<a class="exp-dl-btn exp-dl-clip" href="${url}" download="${esc(clip.name)}">
+          <span class="exp-dl-icon">&#127908;</span>
+          <span class="exp-dl-info">
+            <span class="exp-dl-label">${label}</span>
+            <span class="exp-dl-meta">${esc(clip.name)} &middot; ${fmtSize(clip.wav.byteLength)}</span>
+          </span>
+          <span class="exp-dl-arrow">&#8681;</span>
+        </a>`;
+      }).join('');
+
+  const imgsHtml = imgEntries.length === 0
+    ? (state.cameraEnabled
+        ? `<p class="exp-no-clips">No floor images captured this session.</p>`
+        : `<p class="exp-no-clips">Camera was not enabled for this session.</p>`)
+    : imgEntries.map(({ url, img }) => {
+        const evt  = state.events[img.eventIdx];
+        const sec  = evt?.elapsedSec ?? 0;
+        const mins = String(Math.floor(sec / 60)).padStart(2, '0');
+        const secs = String(sec % 60).padStart(2, '0');
+        const num  = img.eventIdx + 1;
+        const label = `Image ${num} — ${esc(evt?.type ?? 'Alert')} at ${mins}m${secs}s`;
+        const sz    = Math.round(img.fullDataUrl.length * 0.75); // approx decoded bytes
+        return `<a class="exp-dl-btn exp-dl-img" href="${url}" download="${esc(img.name)}">
+          <span class="exp-dl-icon">&#128247;</span>
+          <span class="exp-dl-info">
+            <span class="exp-dl-label">${label}</span>
+            <span class="exp-dl-meta">${esc(img.name)} &middot; ${fmtSize(sz)}</span>
+          </span>
+          <span class="exp-dl-arrow">&#8681;</span>
+        </a>`;
+      }).join('');
+
+  document.getElementById('export-screen').innerHTML = `
+    <div class="exp-header">
+      <div class="exp-header-icon">&#128190;</div>
+      <div class="exp-header-title">Export Ready</div>
+      <div class="exp-header-meta">${esc(state.lift)} &middot; ${esc(state.direction)} &middot; ${durStr} &middot; ${state.events.length} alert${state.events.length !== 1 ? 's' : ''} &middot; ${clipEntries.length} clip${clipEntries.length !== 1 ? 's' : ''} &middot; ${imgEntries.length} image${imgEntries.length !== 1 ? 's' : ''}</div>
+    </div>
+
+    <div class="exp-section">
+      <div class="exp-section-label">Full Export</div>
+      <a class="exp-dl-btn exp-dl-zip" href="${zipUrl}" download="${slug}_export.zip">
+        <span class="exp-dl-icon">&#128230;</span>
+        <span class="exp-dl-info">
+          <span class="exp-dl-label">Download Complete Export (ZIP)</span>
+          <span class="exp-dl-meta">${slug}_export.zip &middot; ${fmtSize(zipBlob.size)}</span>
+        </span>
+        <span class="exp-dl-arrow">&#8681;</span>
+      </a>
+    </div>
+
+    <div class="exp-section">
+      <div class="exp-section-label">Individual Files</div>
+      <a class="exp-dl-btn exp-dl-pdf" href="${pdfUrl}" download="${slug}_report.pdf">
+        <span class="exp-dl-icon">&#128196;</span>
+        <span class="exp-dl-info">
+          <span class="exp-dl-label">PDF Overview Report</span>
+          <span class="exp-dl-meta">${slug}_report.pdf &middot; ${fmtSize(pdfBlob.size)}</span>
+        </span>
+        <span class="exp-dl-arrow">&#8681;</span>
+      </a>
+      <a class="exp-dl-btn exp-dl-clip" href="${htmlUrl}" download="${slug}_interactive.html">
+        <span class="exp-dl-icon">&#127760;</span>
+        <span class="exp-dl-info">
+          <span class="exp-dl-label">Interactive HTML Report</span>
+          <span class="exp-dl-meta">${slug}_interactive.html &middot; ${fmtSize(htmlBlob.size)}</span>
+        </span>
+        <span class="exp-dl-arrow">&#8681;</span>
+      </a>
+      <a class="exp-dl-btn exp-dl-csv" href="${csvUrl}" download="${slug}_data.csv">
+        <span class="exp-dl-icon">&#128202;</span>
+        <span class="exp-dl-info">
+          <span class="exp-dl-label">Raw Data (CSV)</span>
+          <span class="exp-dl-meta">${slug}_data.csv &middot; ${fmtSize(csvBlob.size)}</span>
+        </span>
+        <span class="exp-dl-arrow">&#8681;</span>
+      </a>
+    </div>
+
+    <div class="exp-section">
+      <div class="exp-section-label">Audio Clips (${clipEntries.length} / ${MAX_CLIPS})</div>
+      ${clipsHtml}
+    </div>
+
+    <div class="exp-section">
+      <div class="exp-section-label">Floor Images (${imgEntries.length} / ${MAX_IMAGES})</div>
+      ${imgsHtml}
+    </div>
+
+    <div class="exp-new-session">
+      ${recHtml}
+      <button class="btn btn-red" style="margin-top:${hasRec ? '16px' : '0'}" onclick="startNewSession()">Start New Session</button>
+    </div>
+  `;
+
+  // Switch views
+  document.getElementById('app').classList.remove('visible');
+  document.getElementById('export-screen').classList.remove('hidden');
+}
+
+function startNewSession() {
+  // Revoke all persistent blob URLs to free memory
+  state.exportUrls.forEach(url => URL.revokeObjectURL(url));
+  state.exportUrls = [];
+  location.reload();
+}
+
+// ─────────────────────────────────────────────
+// Lightbox
+// ─────────────────────────────────────────────
+function openLightbox(eventIdx) {
+  const img = state.images.find(i => i.eventIdx === eventIdx);
+  if (!img) return;
+  document.getElementById('lb-img').src = img.fullDataUrl;
+  document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.getElementById('lb-img').src = '';
+}
+
+// ─────────────────────────────────────────────
+// Utility helpers
+// ─────────────────────────────────────────────
+function dataURLtoBlob(dataUrl) {
+  const [hdr, b64] = dataUrl.split(',');
+  const mime = hdr.match(/:(.*?);/)[1];
+  const bin  = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
+}
+
+function dataURLtoArrayBuffer(dataUrl) {
+  const bin  = atob(dataUrl.split(',')[1]);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes.buffer;
+}
+
+function ab2b64(buf) {
+  const bytes = new Uint8Array(buf);
+  let bin = '';
+  const CHUNK = 8192;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(bin);
+}
+
+// ─────────────────────────────────────────────
+// Interactive HTML report builder
+// ─────────────────────────────────────────────
+function buildHTML(slug, endTime) {
+  const duration   = Math.floor((endTime - state.startTime) / 1000);
+  const durStr     = `${Math.floor(duration / 60)}m ${duration % 60}s`;
+  const sessionSec = state.samples.length > 0 ? state.samples[state.samples.length - 1].elapsedSec : 0;
+
+  // Charts
+  const dbImg = sessionSec > 1 ? renderPDFChart({
+    samples: state.samples, valueKey: 'db',
+    yMin: DB_FLOOR, yMax: DB_CEILING, lineColor: '#00e676',
+    gridVals: [-90, -60, -30, 0], sessionSec, W: 1400, H: 340,
+  }) : null;
+  const acImg = sessionSec > 1 ? renderAccelPDFChart({
+    samples: state.samples, sessionSec, W: 1400, H: 380,
+  }) : null;
+
+  // Full-res image lookup map for lightbox (embedded in script tag)
+  const imgMap = {};
+  state.images.forEach(img => { imgMap[img.eventIdx] = img.fullDataUrl; });
+  const imgMapJson = JSON.stringify(imgMap);
+
+  // Stats rows
+  const dds = state.dbDeltaStats, mds = state.magDeltaStats;
+  const statsRows = state.dbStats ? `
+    <tr><td>dB Level (dBFS)</td><td>${state.dbStats.min.toFixed(1)}</td><td>${state.dbStats.max.toFixed(1)}</td><td>${state.dbStats.mean.toFixed(1)}</td><td>${state.dbStats.std.toFixed(1)}</td><td>${state.dbStats.n}</td></tr>
+    <tr><td>Accel Magnitude (m/s²)</td><td>${state.magStats.min.toFixed(3)}</td><td>${state.magStats.max.toFixed(3)}</td><td>${state.magStats.mean.toFixed(3)}</td><td>${state.magStats.std.toFixed(3)}</td><td>${state.magStats.n}</td></tr>
+    <tr><td>Positive dB rises (dB)</td><td>—</td><td>—</td><td>${dds ? dds.mean.toFixed(2) : '—'}</td><td>${dds ? dds.std.toFixed(2) : '—'}</td><td>${dds ? dds.n : '—'}</td></tr>
+    <tr><td>Positive mag rises above baseline (m/s²)</td><td>—</td><td>—</td><td>${mds ? mds.mean.toFixed(3) : '—'}</td><td>${mds ? mds.std.toFixed(3) : '—'}</td><td>${mds ? mds.n : '—'}</td></tr>
+    <tr><td>Median magnitude baseline (m/s²)</td><td colspan="4">${state.magBaseline != null ? state.magBaseline.toFixed(3) : '—'}</td><td>—</td></tr>
+  ` : '';
+
+  const recRows = (state.recDb != null && state.recMag != null) ? `
+    <tr class="rec-row"><td>dB Spike Threshold</td><td><strong>${state.recDb.toFixed(1)} dB rise</strong></td><td>mean + 2σ of positive dB rises · enter on next session setup</td></tr>
+    <tr class="rec-row"><td>Motion Magnitude Threshold</td><td><strong>${state.recMag.toFixed(2)} m/s² above baseline</strong></td><td>mean + 2σ of positive mag rises · enter on next session setup</td></tr>
+  ` : '<tr><td colspan="3">Insufficient data for recommendations</td></tr>';
+
+  // Event rows
+  const eventRows = state.events.map((evt, idx) => {
+    const mins = String(Math.floor(evt.elapsedSec / 60)).padStart(2, '0');
+    const secs = String(evt.elapsedSec % 60).padStart(2, '0');
+    const img  = state.images.find(i => i.eventIdx === idx);
+    const clip = state.clips.find(c => c.eventIdx === idx);
+
+    const typeClass = evt.type.includes('Confirmed') ? 'tc-confirm'
+                    : evt.type.includes('Motion')    ? 'tc-motion'
+                    : evt.type.includes('Rumble')    ? 'tc-rumble'
+                    : evt.type.includes('Knock')     ? 'tc-knock'
+                    : 'tc-spike';
+
+    const imgCell = img
+      ? `<td><img src="${img.thumbDataUrl}" class="h-thumb" onclick="lb(${idx})" alt="floor"></td>`
+      : '<td class="muted">—</td>';
+
+    const audCell = clip
+      ? `<td><audio controls src="data:audio/wav;base64,${ab2b64(clip.wav)}" style="width:140px;height:32px"></audio></td>`
+      : '<td class="muted">—</td>';
+
+    return `<tr>
+      <td>${idx + 1}</td>
+      <td>${mins}m${secs}s</td>
+      <td class="${typeClass}">${htmlEsc(evt.type)}</td>
+      <td>${evt.db.toFixed(1)}</td>
+      <td>${evt.mag.toFixed(3)}</td>
+      ${imgCell}
+      ${audCell}
+    </tr>`;
+  }).join('\n');
+
+  const chartsSection = dbImg ? `
+    <section>
+      <h2>dB Level Over Session</h2>
+      <img src="${dbImg}" alt="dB chart" class="chart-img">
+      <h2>Accelerometer — X / Y / Z / Magnitude</h2>
+      <img src="${acImg}" alt="Accel chart" class="chart-img">
+    </section>` : '';
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Elevator Monitor — ${htmlEsc(state.lift)} ${htmlEsc(state.direction)} ${endTime.toLocaleDateString()}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#fff;color:#1a1a1a;font-size:14px;line-height:1.5}
+header{background:#1a1a1a;color:#f0f0f0;padding:24px 32px 20px}
+header h1{font-size:1.5rem;font-weight:800;margin-bottom:6px}
+.meta-grid{display:flex;flex-wrap:wrap;gap:8px 24px;font-size:0.82rem;color:#aaa;margin-top:8px}
+.meta-item strong{color:#f0f0f0}
+section{padding:24px 32px;border-bottom:1px solid #e8e8e8}
+h2{font-size:1.05rem;font-weight:700;margin-bottom:14px;color:#1a1a1a}
+.chart-img{width:100%;border-radius:6px;margin-bottom:20px;border:1px solid #e0e0e0}
+table{width:100%;border-collapse:collapse;font-size:0.82rem;margin-bottom:16px}
+th{background:#f5f5f5;padding:8px 10px;text-align:left;font-size:0.7rem;text-transform:uppercase;letter-spacing:0.06em;color:#555;border-bottom:2px solid #ddd}
+td{padding:7px 10px;border-bottom:1px solid #eee;vertical-align:middle}
+tr:last-child td{border-bottom:none}
+.rec-row td{background:#f0f7ff}
+.tc-confirm{color:#c53030;font-weight:700}
+.tc-motion {color:#6b46c1;font-weight:700}
+.tc-rumble {color:#2b6cb0;font-weight:700}
+.tc-knock  {color:#b7791f;font-weight:700}
+.tc-spike  {color:#276749;font-weight:700}
+.muted{color:#999}
+.h-thumb{width:64px;height:48px;object-fit:cover;border-radius:4px;cursor:pointer;border:1px solid #ddd;display:block}
+audio{max-width:160px}
+#lb{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:9999;align-items:center;justify-content:center}
+#lb.open{display:flex}
+#lb img{max-width:95vw;max-height:90vh;border-radius:6px}
+#lb-close{position:absolute;top:16px;right:20px;font-size:2rem;color:#fff;cursor:pointer;background:none;border:none;line-height:1;padding:8px}
+footer{padding:20px 32px;font-size:0.75rem;color:#888;border-top:1px solid #e8e8e8}
+@media print{#lb{display:none!important}.h-thumb{cursor:default}}
+@media(max-width:600px){section{padding:16px};header{padding:16px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Elevator Monitor — Session Report</h1>
+  <div class="meta-grid">
+    <span class="meta-item"><strong>Lift:</strong> ${htmlEsc(state.lift)}</span>
+    <span class="meta-item"><strong>Direction:</strong> ${htmlEsc(state.direction)}</span>
+    <span class="meta-item"><strong>Start:</strong> ${state.startTime.toLocaleString()}</span>
+    <span class="meta-item"><strong>End:</strong> ${endTime.toLocaleString()}</span>
+    <span class="meta-item"><strong>Duration:</strong> ${durStr}</span>
+    <span class="meta-item"><strong>Alert events:</strong> ${state.events.length}</span>
+    <span class="meta-item"><strong>Audio clips:</strong> ${state.clips.length}</span>
+    <span class="meta-item"><strong>Floor images:</strong> ${state.images.length}</span>
+    <span class="meta-item"><strong>dB spike threshold used:</strong> ${state.dbSpikeThresh} dB rise</span>
+    <span class="meta-item"><strong>Motion threshold used:</strong> ${state.motionThresh.toFixed(1)} m/s² above baseline</span>
+  </div>
+</header>
+
+${chartsSection}
+
+<section>
+  <h2>Statistical Summary</h2>
+  <table>
+    <thead><tr><th>Metric</th><th>Min</th><th>Max</th><th>Mean</th><th>Std Dev</th><th>Count</th></tr></thead>
+    <tbody>${statsRows}</tbody>
+  </table>
+  <h2>Recommended Thresholds for Next Session</h2>
+  <table>
+    <thead><tr><th>Threshold</th><th>Recommended Value</th><th>Basis</th></tr></thead>
+    <tbody>${recRows}</tbody>
+  </table>
+</section>
+
+<section>
+  <h2>Alert Events (${state.events.length})</h2>
+  <div style="overflow-x:auto">
+    <table>
+      <thead><tr><th>#</th><th>Time</th><th>Type</th><th>dB</th><th>Mag</th><th>Floor Image</th><th>Audio</th></tr></thead>
+      <tbody>${eventRows || '<tr><td colspan="7" class="muted">No alert events recorded</td></tr>'}</tbody>
+    </table>
+  </div>
+</section>
+
+<footer>Generated by Elevator Monitor &nbsp;·&nbsp; ${endTime.toLocaleString()} &nbsp;·&nbsp; ${htmlEsc(slug)}</footer>
+
+<div id="lb" onclick="if(event.target===this)closeLb()">
+  <button id="lb-close" onclick="closeLb()">&#10005;</button>
+  <img id="lb-img" alt="Floor image full resolution">
+</div>
+
+<script>
+const IMG=${imgMapJson};
+function lb(idx){const s=IMG[idx];if(s){document.getElementById('lb-img').src=s;document.getElementById('lb').classList.add('open');}}
+function closeLb(){document.getElementById('lb').classList.remove('open');document.getElementById('lb-img').src='';}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeLb();});
+<\u002Fscript>
+</body>
+</html>`;
+}
+
+function htmlEsc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ─────────────────────────────────────────────
+// CSV builder (returns string — no download)
+// ─────────────────────────────────────────────
+function buildCSV() {
+  const cols = ['timestamp','elapsed_sec','lift','direction','db','x','y','z',
+                'magnitude','alert_triggered','alert_type'];
+  const lines = [cols.join(',')];
+  state.samples.forEach(s => {
+    lines.push([
+      csvC(s.ts), s.elapsedSec.toFixed(2), csvC(state.lift), csvC(state.direction),
+      s.db.toFixed(2), s.x.toFixed(4), s.y.toFixed(4), s.z.toFixed(4),
+      s.mag.toFixed(4), s.alert ? 'true' : 'false', csvC(s.alertType),
+    ].join(','));
+  });
+  return lines.join('\r\n');
+}
+function csvC(v) { return '"' + String(v).replace(/"/g, '""') + '"'; }
+
+// ─────────────────────────────────────────────
+// PDF builder — returns Blob (ZIP adds it)
+// ─────────────────────────────────────────────
+function buildPDF(slug, endTime) {
+  if (!window.jspdf) throw new Error('jsPDF not loaded');
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+  const duration = Math.floor((endTime - state.startTime) / 1000);
+  const durStr   = Math.floor(duration / 60) + 'm ' + (duration % 60) + 's';
+  const HDR      = { fillColor: [28,28,28],  textColor: [240,240,240] };
+  const RED      = { fillColor: [255,200,200], textColor: [140,0,0] };
+
+  // ── Title ────────────────────────────────────────────────────
+  doc.setFontSize(20); doc.setFont('helvetica', 'bold');
+  doc.text('Elevator Monitor — Session Report', 14, 22);
+  doc.setFontSize(9);  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(120);
+  doc.text('Generated: ' + endTime.toLocaleString(), 14, 29);
+  doc.setTextColor(0);
+
+  // ── Session summary ──────────────────────────────────────────
+  doc.autoTable({
+    startY: 34,
+    head:   [['Field', 'Value']],
+    body: [
+      ['Lift / Elevator',              state.lift],
+      ['Direction',                    state.direction],
+      ['Session Start',                state.startTime.toLocaleString()],
+      ['Session End',                  endTime.toLocaleString()],
+      ['Duration',                     durStr],
+      ['Total Alert Events',           state.events.length],
+      ['Continuous Samples (10 Hz)',   state.samples.length],
+      ['dB Spike Threshold (set)',     state.dbSpikeThresh + ' dB rise'],
+      ['Motion Threshold (set)',       state.motionThresh.toFixed(1) + ' m/s² above baseline'],
+      ['Audio Clips Captured',         state.clips.length + (state.events.length > MAX_CLIPS ? ` (first ${MAX_CLIPS} only)` : '')],
+    ],
+    theme: 'grid', headStyles: HDR,
+    columnStyles: { 0: { fontStyle: 'bold', cellWidth: 68 } },
+    styles: { fontSize: 9 },
+  });
+
+  // ── Event breakdown ──────────────────────────────────────────
+  const counts = {};
+  state.events.forEach(e => { counts[e.type] = (counts[e.type] || 0) + 1; });
+  let y = doc.lastAutoTable.finalY + 10;
+  doc.setFontSize(13); doc.setFont('helvetica', 'bold');
+  doc.text('Alert Event Breakdown', 14, y);
+  doc.autoTable({
+    startY: y + 3,
+    head:   [['Event Type', 'Count']],
+    body:   Object.entries(counts),
+    theme:  'grid', headStyles: HDR, styles: { fontSize: 9 },
+  });
+
+  // ── Continuous Data Summary ──────────────────────────────────
+  y = doc.lastAutoTable.finalY + 12;
+  if (y > 228) { doc.addPage(); y = 16; }
+  doc.setFontSize(14); doc.setFont('helvetica', 'bold');
+  doc.text('Continuous Data Summary', 14, y); y += 6;
+
+  if (state.dbStats && state.magStats) {
+    doc.autoTable({
+      startY: y,
+      head:   [['Metric', 'Min', 'Max', 'Mean', 'Std Dev', 'Samples']],
+      body: [
+        ['dB Level (dBFS)',
+          state.dbStats.min.toFixed(1),  state.dbStats.max.toFixed(1),
+          state.dbStats.mean.toFixed(1), state.dbStats.std.toFixed(1), state.dbStats.n],
+        ['Accel Magnitude (m/s²)',
+          state.magStats.min.toFixed(3),  state.magStats.max.toFixed(3),
+          state.magStats.mean.toFixed(3), state.magStats.std.toFixed(3), state.magStats.n],
+      ],
+      theme: 'grid', headStyles: HDR, styles: { fontSize: 8.5 },
+    });
+    y = doc.lastAutoTable.finalY + 4;
+
+    // Delta statistics (basis for recommendations)
+    const dds = state.dbDeltaStats, mds = state.magDeltaStats;
+    doc.autoTable({
+      startY: y,
+      head:   [['Delta Statistic', 'Mean', 'Std Dev', 'Count']],
+      body: [
+        ['Positive dB rises between samples (dB)',
+          dds ? dds.mean.toFixed(2) : '—', dds ? dds.std.toFixed(2) : '—', dds ? dds.n : '—'],
+        ['Positive mag rises above median baseline (m/s²)',
+          mds ? mds.mean.toFixed(3) : '—', mds ? mds.std.toFixed(3) : '—', mds ? mds.n : '—'],
+        ['Median magnitude baseline (m/s²)',
+          state.magBaseline != null ? state.magBaseline.toFixed(3) : '—', '—', '—'],
+      ],
+      theme: 'grid', headStyles: HDR, styles: { fontSize: 8 },
+    });
+    y = doc.lastAutoTable.finalY + 6;
+
+    // Recommendations
+    const recDbStr  = state.recDb  != null ? state.recDb.toFixed(1)  + ' dB rise'          : 'N/A';
+    const recMagStr = state.recMag != null ? state.recMag.toFixed(2) + ' m/s² above baseline' : 'N/A';
+    const dbBasis   = dds ? `mean ${dds.mean.toFixed(2)} + 2σ ${dds.std.toFixed(2)} (${dds.n} rises)` : '—';
+    const magBasis  = mds ? `mean ${mds.mean.toFixed(3)} + 2σ ${mds.std.toFixed(3)} (${mds.n} rises)` : '—';
+    doc.autoTable({
+      startY: y,
+      head:   [['Recommended Threshold (enter on next session setup screen)', 'Value', 'Basis']],
+      body: [
+        ['dB Spike Threshold',       recDbStr,  dbBasis],
+        ['Motion Magnitude Threshold', recMagStr, magBasis],
+      ],
+      theme: 'grid',
+      headStyles: { fillColor: [17,32,48], textColor: [99,179,237] },
+      styles: { fontSize: 8.5 },
+    });
+    y = doc.lastAutoTable.finalY + 8;
+  }
+
+  // ── PDF Charts ───────────────────────────────────────────────
+  if (state.samples.length > 1) {
+    const sessionSec = state.samples[state.samples.length - 1].elapsedSec;
+
+    if (y > 210) { doc.addPage(); y = 16; }
+    doc.setFontSize(11); doc.setFont('helvetica', 'bold');
+    doc.text('dB Level Over Session (elapsed time)', 14, y); y += 4;
+    const dbImg = renderPDFChart({
+      samples: state.samples, valueKey: 'db',
+      yMin: DB_FLOOR, yMax: DB_CEILING,
+      lineColor: '#00e676', gridVals: [-90, -60, -30, 0],
+      sessionSec, W: 1800, H: 420,
+    });
+    doc.addImage(dbImg, 'PNG', 14, y, 182, 42); y += 48;
+
+    if (y > 220) { doc.addPage(); y = 16; }
+    doc.setFontSize(11); doc.setFont('helvetica', 'bold');
+    doc.text('Accelerometer — X / Y / Z / Magnitude (elapsed time)', 14, y); y += 4;
+    const accelImg = renderAccelPDFChart({ samples: state.samples, sessionSec, W: 1800, H: 480 });
+    doc.addImage(accelImg, 'PNG', 14, y, 182, 48); y += 54;
+  }
+
+  // ── Audio/Knock Events table ─────────────────────────────────
+  const audioEvts  = state.events.filter(e => !e.type.startsWith('Motion:'));
+  const motionEvts = state.events.filter(e =>  e.type.startsWith('Motion:'));
+
+  if (y > 230) { doc.addPage(); y = 16; }
+  doc.setFontSize(13); doc.setFont('helvetica', 'bold');
+  doc.text('Audio / Knock Events (' + audioEvts.length + ')', 14, y);
+
+  const makeEvtTable = (evts, startY) => {
+    const hasImgs = state.images.length > 0;
+    const head = hasImgs
+      ? [['T+', 'Type', 'dBFS', 'Mag', 'Audio Clip', 'Floor Image']]
+      : [['T+', 'Type', 'dBFS', 'X', 'Y', 'Z', 'Mag', 'Audio Clip']];
+    const body = evts.map(e => hasImgs
+      ? [e.elapsedSec + 's', e.type, e.db, e.mag, e.clipName || '—', '']
+      : [e.elapsedSec + 's', e.type, e.db, e.x, e.y, e.z, e.mag, e.clipName || '—']
+    );
+    const IMG_COL = 5;
+    const IMG_H   = 18; // mm cell height for image rows
+    doc.autoTable({
+      startY,
+      head, body,
+      theme: 'grid', headStyles: HDR,
+      styles: { fontSize: 7, minCellHeight: hasImgs ? IMG_H : 0 },
+      columnStyles: hasImgs
+        ? { 4: { cellWidth: 30 }, 5: { cellWidth: 24 } }
+        : { 7: { cellWidth: 30 } },
+      didParseCell(d) {
+        if (d.section !== 'body') return;
+        if (evts[d.row.index]?.type.includes('Confirmed')) {
+          d.cell.styles.fillColor = RED.fillColor;
+          d.cell.styles.textColor = RED.textColor;
+          d.cell.styles.fontStyle = 'bold';
+        }
+      },
+      didDrawCell(d) {
+        if (!hasImgs || d.section !== 'body' || d.column.index !== IMG_COL) return;
+        const evt = evts[d.row.index];
+        const origIdx = state.events.indexOf(evt);
+        const img = state.images.find(i => i.eventIdx === origIdx);
+        if (img) {
+          const pad = 1;
+          const w = d.cell.width - pad * 2;
+          const h = d.cell.height - pad * 2;
+          doc.addImage(img.thumbDataUrl, 'JPEG', d.cell.x + pad, d.cell.y + pad, w, h);
+        }
+      },
+    });
+  };
+
+  if (audioEvts.length > 0) {
+    makeEvtTable(audioEvts, y + 3);
+  } else {
+    doc.setFontSize(9); doc.setFont('helvetica', 'normal');
+    doc.setTextColor(150); doc.text('(none)', 14, y + 8); doc.setTextColor(0);
+  }
+
+  y = (doc.lastAutoTable ? doc.lastAutoTable.finalY : y + 14) + 10;
+  if (y > 240) { doc.addPage(); y = 16; }
+  doc.setFontSize(13); doc.setFont('helvetica', 'bold');
+  doc.text('Motion Events (' + motionEvts.length + ')', 14, y);
+
+  if (motionEvts.length > 0) {
+    makeEvtTable(motionEvts, y + 3);
+  } else {
+    doc.setFontSize(9); doc.setFont('helvetica', 'normal');
+    doc.setTextColor(150); doc.text('(none)', 14, y + 8); doc.setTextColor(0);
+  }
+
+  y = (doc.lastAutoTable ? doc.lastAutoTable.finalY : y + 14) + 6;
+  if (state.events.length > MAX_CLIPS) {
+    if (y > 270) { doc.addPage(); y = 16; }
+    doc.setFontSize(8); doc.setFont('helvetica', 'italic');
+    doc.setTextColor(150);
+    doc.text(
+      `Note: ${state.events.length - MAX_CLIPS} additional alert event(s) detected after the ` +
+      `${MAX_CLIPS}-clip limit was reached. No audio clip was captured for those events.`,
+      14, y, { maxWidth: 182 }
+    );
+    y += 8;
+    doc.setTextColor(0);
+  }
+  if (y > 270) { doc.addPage(); y = 16; }
+  doc.setFontSize(8); doc.setFont('helvetica', 'italic'); doc.setTextColor(130);
+  doc.text(
+    'Full resolution images and audio clips are available in the accompanying interactive HTML report and media folder.',
+    14, y, { maxWidth: 182 }
+  );
+  doc.setTextColor(0);
+
+  // ── Page footers ─────────────────────────────────────────────
+  const pages = doc.getNumberOfPages();
+  for (let p = 1; p <= pages; p++) {
+    doc.setPage(p);
+    doc.setFontSize(7); doc.setTextColor(150);
+    doc.text(
+      'Elevator Monitor · ' + state.lift + ' · ' + state.direction +
+      ' · Page ' + p + ' / ' + pages, 14, 290
+    );
+  }
+
+  return doc.output('blob');
+}
+
+// ─────────────────────────────────────────────
+// Off-screen PDF chart renderer
+// Uses elapsed-time X axis (0 s → sessionSec)
+// ─────────────────────────────────────────────
+function renderPDFChart({ samples, valueKey, yMin, yMax, lineColor, gridVals, sessionSec, W, H }) {
+  const canvas   = document.createElement('canvas');
+  canvas.width   = W; canvas.height = H;
+  const ctx      = canvas.getContext('2d');
+  const PAD      = { top: 20, right: 20, bottom: 42, left: 64 };
+  const CW       = W - PAD.left - PAD.right;
+  const CH       = H - PAD.top  - PAD.bottom;
+
+  ctx.fillStyle = '#141414';
+  ctx.fillRect(0, 0, W, H);
+
+  const toY = v => PAD.top + CH - clamp(((v - yMin) / (yMax - yMin)) * CH, 0, CH);
+  // X from elapsed seconds
+  const toX = sec => PAD.left + (sec / Math.max(sessionSec, 1)) * CW;
+
+  // Grid lines
+  const grids = gridVals || [yMin, yMin+(yMax-yMin)*0.25, yMin+(yMax-yMin)*0.5, yMin+(yMax-yMin)*0.75, yMax];
+  ctx.strokeStyle = '#2a2a2a'; ctx.lineWidth = 1;
+  grids.forEach(v => {
+    const y = toY(v);
+    ctx.beginPath(); ctx.moveTo(PAD.left, y); ctx.lineTo(PAD.left + CW, y); ctx.stroke();
+    ctx.fillStyle = '#555'; ctx.font = '18px monospace'; ctx.textAlign = 'right';
+    ctx.fillText(Number.isInteger(v) ? v : v.toFixed(2), PAD.left - 8, y + 7);
+  });
+
+  // Elapsed-time X ticks
+  const interval = tickInterval(sessionSec);
+  ctx.fillStyle = '#555'; ctx.font = '18px monospace'; ctx.textAlign = 'center';
+  ctx.strokeStyle = '#2a2a2a'; ctx.lineWidth = 1;
+  for (let t = 0; t <= sessionSec; t += interval) {
+    const x = toX(t);
+    ctx.beginPath(); ctx.moveTo(x, PAD.top + CH); ctx.lineTo(x, PAD.top + CH + 10); ctx.stroke();
+    ctx.fillText(t + 's', x, PAD.top + CH + 28);
+  }
+
+  // Alert markers
+  samples.forEach(s => {
+    if (!s.alert) return;
+    const x = toX(s.elapsedSec);
+    ctx.strokeStyle = s.alertType.includes('Confirmed')
+      ? 'rgba(229,62,62,0.9)' : 'rgba(229,62,62,0.55)';
+    ctx.lineWidth = s.alertType.includes('Confirmed') ? 2.5 : 1.5;
+    ctx.beginPath(); ctx.moveTo(x, PAD.top); ctx.lineTo(x, PAD.top + CH); ctx.stroke();
+  });
+
+  // Data line
+  ctx.strokeStyle = lineColor; ctx.lineWidth = 2; ctx.lineJoin = 'round';
+  ctx.beginPath();
+  samples.forEach((s, i) => {
+    const x = toX(s.elapsedSec);
+    const y = toY(s[valueKey]);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  // Border
+  ctx.strokeStyle = '#333'; ctx.lineWidth = 1;
+  ctx.strokeRect(PAD.left, PAD.top, CW, CH);
+
+  return canvas.toDataURL('image/png');
+}
+
+// ─────────────────────────────────────────────
+// Accelerometer PDF chart — X / Y / Z / Magnitude, 4 coloured lines, auto-scale Y
+// ─────────────────────────────────────────────
+function renderAccelPDFChart({ samples, sessionSec, W, H }) {
+  const canvas = document.createElement('canvas');
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  const PAD = { top: 20, right: 20, bottom: 42, left: 64 };
+  const CW  = W - PAD.left - PAD.right;
+  const CH  = H - PAD.top  - PAD.bottom;
+
+  ctx.fillStyle = '#141414';
+  ctx.fillRect(0, 0, W, H);
+
+  // Auto-scale: symmetric around 0, based on max |x|, |y|, |z|, mag
+  let maxAbs = 1;
+  samples.forEach(s => {
+    maxAbs = Math.max(maxAbs, Math.abs(s.x), Math.abs(s.y), Math.abs(s.z), s.mag);
+  });
+  maxAbs *= 1.1;
+
+  const toX   = sec => PAD.left + (sec / Math.max(sessionSec, 1)) * CW;
+  const midY  = PAD.top + CH / 2;
+  const toY   = v => midY - clamp((v / maxAbs) * (CH / 2), -(CH / 2), CH / 2);
+
+  // Grid lines (symmetric: 0, ±half, ±full)
+  const gridVals = [-maxAbs, -maxAbs / 2, 0, maxAbs / 2, maxAbs];
+  ctx.strokeStyle = '#2a2a2a'; ctx.lineWidth = 1;
+  ctx.fillStyle = '#555'; ctx.font = '18px monospace'; ctx.textAlign = 'right';
+  gridVals.forEach(v => {
+    const y = toY(v);
+    ctx.beginPath(); ctx.moveTo(PAD.left, y); ctx.lineTo(PAD.left + CW, y); ctx.stroke();
+    ctx.fillText(v.toFixed(1), PAD.left - 8, y + 7);
+  });
+
+  // X-axis ticks
+  const interval = tickInterval(sessionSec);
+  ctx.fillStyle = '#555'; ctx.font = '18px monospace'; ctx.textAlign = 'center';
+  ctx.strokeStyle = '#2a2a2a'; ctx.lineWidth = 1;
+  for (let t = 0; t <= sessionSec; t += interval) {
+    const x = toX(t);
+    ctx.beginPath(); ctx.moveTo(x, PAD.top + CH); ctx.lineTo(x, PAD.top + CH + 10); ctx.stroke();
+    ctx.fillText(t + 's', x, PAD.top + CH + 28);
+  }
+
+  // Alert markers
+  samples.forEach(s => {
+    if (!s.alert) return;
+    const x = toX(s.elapsedSec);
+    ctx.strokeStyle = s.alertType.includes('Confirmed')
+      ? 'rgba(229,62,62,0.9)' : 'rgba(229,62,62,0.55)';
+    ctx.lineWidth = s.alertType.includes('Confirmed') ? 2.5 : 1.5;
+    ctx.beginPath(); ctx.moveTo(x, PAD.top); ctx.lineTo(x, PAD.top + CH); ctx.stroke();
+  });
+
+  // Data lines
+  const drawLine = (key, color, lw) => {
+    ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.lineJoin = 'round';
+    ctx.beginPath();
+    samples.forEach((s, i) => {
+      const x = toX(s.elapsedSec);
+      const y = toY(s[key]);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  };
+  drawLine('x',   '#e53e3e', 2);
+  drawLine('y',   '#00e676', 2);
+  drawLine('z',   '#3182ce', 2);
+  drawLine('mag', '#ff8c00', 3);
+
+  // Colour legend (top-right inside plot area)
+  const legendItems = [
+    { label: 'X', color: '#e53e3e' },
+    { label: 'Y', color: '#00e676' },
+    { label: 'Z', color: '#3182ce' },
+    { label: 'Mag', color: '#ff8c00' },
+  ];
+  ctx.font = 'bold 20px sans-serif'; ctx.textAlign = 'left';
+  let lx = PAD.left + CW - 240;
+  const ly = PAD.top + 28;
+  legendItems.forEach(item => {
+    ctx.fillStyle = item.color;
+    ctx.fillRect(lx, ly - 16, 24, 6);
+    ctx.fillText(item.label, lx + 30, ly);
+    lx += 70;
+  });
+
+  // Border
+  ctx.strokeStyle = '#333'; ctx.lineWidth = 1;
+  ctx.strokeRect(PAD.left, PAD.top, CW, CH);
+
+  return canvas.toDataURL('image/png');
+}
+
+// ─────────────────────────────────────────────
+// Export progress helpers
+// ─────────────────────────────────────────────
+function showExportProgress(msg) {
+  const el = document.getElementById('export-progress');
+  if (el) { el.textContent = msg; el.style.display = 'block'; }
+}
+function hideExportProgress() {
+  const el = document.getElementById('export-progress');
+  if (el) el.style.display = 'none';
+}
+
+// Promise-based setTimeout(20ms) — yields to the browser between heavy tasks
+function tick() { return new Promise(r => setTimeout(r, 20)); }
+
+// ─────────────────────────────────────────────
+// Utility
+// ─────────────────────────────────────────────
+function downloadBlob(filename, blob) {
+  const url = URL.createObjectURL(blob);
+  const a   = Object.assign(document.createElement('a'), { href: url, download: filename });
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+// ─────────────────────────────────────────────
+// Initialisation on DOM ready
+// ─────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  loadSettings();
+  // Save whenever the user types a lift name or changes direction
+  document.getElementById('lift-input').addEventListener('input', saveSettings);
+  document.getElementById('direction-input').addEventListener('change', saveSettings);
+});
+</script>
+</body>
+</html>
